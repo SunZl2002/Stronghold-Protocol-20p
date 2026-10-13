@@ -22,7 +22,7 @@ Debian 服务器上，**Node 22 + 源码**直接跑最省事；要 Docker 也能
 
 | 项目 | 要求 | 说明 |
 |---|---|---|
-| Node.js | **22 或 24**（`>=22`） | `package.json engines`；22 LTS 即可 |
+| Node.js | **22.21+ 或 24**（`engines` 只写 `>=22`） | `package.json engines` 声明 `>=22`，但 **22.19 及更早不会让 `fetch()` 走 `HTTP(S)_PROXY`**：服务器若需经代理下载素材，必须用 Node ≥22.21 或 ≥24，或以 `NODE_USE_ENV_PROXY=1` 启动（旧版 Node 上该变量无效）。不经代理时 22.x 均可 |
 | 操作系统 | Linux（Debian 12 已验证路径） | 带宽熔断读取 `/proc/net/*`，**仅 Linux 可用**；Windows 不会伪造该测量 |
 | CPU | 主频优先 | 每个房间每作战回合约 1 ms；**AI / 断线托管战场由服务器模拟，是主要开销** |
 | 内存 | 4 GB 起 | 缓存与注册表都有上限（压缩缓存 96 MiB、素材清单 32 MiB、会话 20 000、连接 2 000、房间 1 000） |
