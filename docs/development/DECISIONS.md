@@ -446,3 +446,33 @@
 - 依据：用户 2026-10-13 的决定；实现 `server/http/websocket.js`（`WS_COMPRESSION`）；
   守卫 `test/wire-pressure.test.js`、`test/ws-compression.test.js`（已适配）；
   实测数据与 A/B 方法见 [本次合并记录](records/2026-10-13-01-upstream-v0.2.6-20p.md)。
+
+## D037
+
+**生效：干员皮肤默认全部装上：每个有已装模型的干员，在全新浏览器上自动穿上一款。**
+
+- 用户 2026-10-14 明确要求：**「默认都装」**。此前皮肤是「目录内置、选择留空」，
+  玩家要逐个去「干员调配 → 皮肤」挑；现在全新浏览器打开即已穿好。
+- **默认映射的规则**（`public/js/ui/skins.js` `defaultSkins()`）：
+  - 按**棋子 id**（`chess_*`）生成，不是干员 id——选择是 per chess，而目录与清单是 per 干员
+    （docs/SKINS.md 点名的静默失败点）；
+  - **从不**给 golden / hidden / 自选（DIY）记录装（与 `isLoadoutSlot` 同一道门）——本版本
+    8 名有皮肤的干员正是因为**全部棋子都隐藏**才没有被装上（崖心、地灵、巫恋、红豆、蜜蜡、
+    见行者、协律、瑰盐），那是正确行为；
+  - **只挑清单里真有 `spine` 的皮肤**：源头缺文件的 3 款（`char_4087_ines@boc#8`、
+    `char_1012_skadi2@boc#4`、`char_1012_skadi2@iteration#2`）不进默认，否则穿上了也会
+    回退成原皮，等于没穿。当前默认覆盖 **106 个可见棋子**。
+- **只在从未选过的浏览器上播种一次**，标记写在 `sp.pref.skinsDefault`。
+  没有这个标记就分不清「从没选过」和「选过但清空了」，默认会在每次刷新后**复活**，
+  玩家就再也脱不掉皮肤了。**这是本决定最容易写错的地方。**
+- **播种时机**：必须等 `skins` + `assets` + **`chess`** 三个都 `ready`。
+  模块加载时 `data` 还是 `idle`，在模块顶层算默认只会得到空表；漏了 `chess` 同样得到空表
+  （`data.list('chess')` 为空 ⇒ 映射为空）。实现见 `loadSkinData()`，并在 `main.js` 启动时调用，
+  好让选择在**第一次 welcome 之前**就同步给服务器。
+- **代价（须知）**：20 席全员穿皮肤时 `m.public` 每次广播多 **+1120 B**
+  （1581 → 2701 B），28 条连接 @8 Hz 约 **+0.25 Mbit/s**，仍在 `test/wire-pressure.test.js`
+  覆盖的 0.8 Mbps 预算内（D036）。不穿皮肤的房间**逐字节不变**。
+- 玩家仍可随时清空（皮肤页选「默认」，或 `setSkins({})`），清空后**不会**被重新装上。
+- 依据：用户 2026-10-14 的决定；实现 `public/js/ui/skins.js`
+  （`defaultSkins` / `installDefaultSkins` / `loadSkinData`）、`public/js/main.js`；
+  守卫 `test/skins.test.js` 的「D037 默认皮肤」一例。

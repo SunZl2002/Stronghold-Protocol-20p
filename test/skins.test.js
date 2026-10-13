@@ -8,10 +8,12 @@ import { fileURLToPath } from 'node:url';
 import { isSkinId, isSkinSelection } from '../shared/protocol.js';
 import { mergeSkins, sanitizeSkins, exportPayload, parseImport } from '../public/js/ui/loadoutModel.js';
 import { avatarUrl, spineEntry, hasBackSpine } from '../public/js/assets.js';
+import { defaultSkins } from '../public/js/ui/skins.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const skinsData = JSON.parse(readFileSync(join(ROOT, 'data/skins.json'), 'utf8'));
 const assetsData = JSON.parse(readFileSync(join(ROOT, 'data/assets.json'), 'utf8'));
+const chessData = JSON.parse(readFileSync(join(ROOT, 'data/chess.json'), 'utf8'));
 
 test('全量 174 套皮肤内置元数据覆盖与映射正确', () => {
   const chars = skinsData.chars || {};
@@ -208,5 +210,70 @@ test('战场单位：干员的皮肤必须穿过模拟层到达 unitInfo（曾�
   assert.equal(vb.skin, undefined, 'undefined (not null) so JSON.stringify drops it');
   assert.ok(JSON.stringify(va).includes(`"skin":"${SKIN}"`), 'it reaches the wire');
   assert.ok(!JSON.stringify(vb).includes('"skin"'), 'a skinless unit costs the broadcast nothing');
+});
+
+/**
+ * D037 默认皮肤 (the owner's request of 2026-10-14): every operator whose skin has an installed model wears it, so a
+ * fresh browser is dressed instead of plain. The rules that matter, all checkable against the committed data without a
+ * browser:
+ *
+ *   * keyed by CHESS id (a choice is per chess; the catalogue is per operator) and never on a golden / hidden / 自选
+ *     record — the same gate the loadout uses;
+ *   * only a skin whose Spine model is actually in the manifest, so a dressed operator is never one that would fall
+ *     back to its own model (the three source-missing skins);
+ *   * an operator with no installed skin is absent, not mapped to nothing.
+ */
+test('D037 默认皮肤：每个有模型的干员都装上一款，且只装在能穿皮肤的棋子上', () => {
+  // a store over the committed data, exercising the real shapes (chess / skins catalogue / manifest)
+  const store = {
+    get: (n) => (n === 'skins' ? skinsData : n === 'assets' ? assetsData : null),
+    list: (n) => (n === 'chess' ? Object.values(chessData) : []),
+  };
+  const map = defaultSkins(store);
+  const entries = Object.entries(map);
+  assert.ok(entries.length > 0, 'the defaults are not empty against the committed data');
+
+  // every chess in the map may wear a skin at all
+  for (const [chessId, skinId] of entries) {
+    const c = chessData[chessId];
+    assert.ok(c, `${chessId} is a real chess`);
+    assert.ok(!c.isGolden, `${chessId} is not the golden form`);
+    assert.ok(!c.isHidden, `${chessId} is not hidden`);
+    assert.ok(!c.isDiy, `${chessId} is not a 自选 slot`);
+    // and the skin is one of that operator's, with its model installed
+    assert.ok(assetsData.chars[c.charId]?.skins?.[skinId], `${skinId} is installed for ${c.charId}`);
+    assert.ok(assetsData.chars[c.charId].skins[skinId].spine, `${skinId} has a Spine model on this server`);
+  }
+
+  // every operator that HAS an installed skin is dressed (no gaps)
+  const dressedChars = new Set(entries.map(([chessId]) => chessData[chessId].charId));
+  const withInstalled = Object.entries(assetsData.chars)
+    .filter(([, rec]) => Object.values(rec.skins || {}).some((s) => s.spine))
+    .map(([charId]) => charId);
+  assert.equal(withInstalled.length, 114, 'the committed manifest has 114 operators with a model');
+  for (const charId of withInstalled) {
+    // an operator may have no eligible chess (all golden / hidden); only require it when one exists
+    const eligible = Object.values(chessData).some((c) => c.charId === charId && !c.isGolden && !c.isHidden && !c.isDiy);
+    if (eligible) assert.ok(dressedChars.has(charId), `${charId} is dressed`);
+  }
+
+  // an operator with no installed model is absent
+  const none = Object.entries(assetsData.chars).find(([, rec]) => !Object.values(rec.skins || {}).some((s) => s.spine));
+  if (none) {
+    const [charId] = none;
+    assert.ok(!dressedChars.has(charId), `${charId} has no installed skin and stays plain`);
+  }
+
+  // it never picks one of the three skins whose files the source lacks (matched by exact id: other operators do have
+  // their own `@boc#…` skins, so a substring test would be wrong)
+  const SOURCE_MISSING = new Set(['char_4087_ines@boc#8', 'char_1012_skadi2@boc#4', 'char_1012_skadi2@iteration#2']);
+  for (const skinId of Object.values(map)) {
+    assert.ok(!SOURCE_MISSING.has(skinId), `${skinId} has no model on the source and must not be a default`);
+  }
+  // (and every one of them really is missing: the injector writes `spine` only for files on disk)
+  for (const skinId of SOURCE_MISSING) {
+    const charId = skinId.split('@')[0];
+    assert.ok(!assetsData.chars[charId]?.skins?.[skinId]?.spine, `${skinId} is still without a model`);
+  }
 });
 

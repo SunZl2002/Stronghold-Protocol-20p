@@ -56,7 +56,7 @@ import { LoadoutHost } from './screens/loadout.js';
 import { StatsHost } from './screens/stats.js';
 import { recordResult, installStatsRecorder } from './ui/stats.js';
 import { installLoadoutSync, installOwnershipSync, installDiySync } from './ui/loadoutSync.js';
-import { installSkinsSync } from './ui/skins.js';
+import { installSkinsSync, loadSkinData } from './ui/skins.js';
 import { startBuildGuard } from './ui/buildGuard.js';
 import { MAX_SEATS } from '../../shared/constants.js';
 import { initLang, useLang, tickerText } from './ui/lang.js';
@@ -406,6 +406,9 @@ async function boot() {
   installStatsRecorder(store); // follows the match on screen, so a 放弃模拟 can be recorded (ui/stats.js)
   installLoadoutSync({ net });
   installSkinsSync({ net });
+  // D037: seed a fresh browser with the default skins before the first welcome, so the choice is mirrored on connect
+  // instead of waiting for the 干员调配 screen to be opened.
+  loadSkinData();
   installOwnershipSync({ net });
   installDiySync({ net });
   net.attachBrowserHooks();
