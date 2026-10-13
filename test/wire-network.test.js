@@ -5,6 +5,7 @@ import { Net } from '../public/js/net.js';
 import { encodeWire, decodeWire } from '../shared/wireCodec.js';
 import { TestClient } from './helpers/wsClient.js';
 import { makeMatch } from './match/harness.js';
+import { DELAYS } from '../server/match/match/common.js';
 
 async function serverFixture(t, opts = {}) {
   const srv = await startServer({ port: 0, host: '127.0.0.1', quiet: true, ...opts });
@@ -195,7 +196,10 @@ test('decode failure reconnects with the same identity and disables arrays for t
   await promise;
 });
 
-test('public changes coalesce to 5 Hz, deduplicate and retain immediate forced resync', () => {
+// Bound to DELAYS.PUBLIC_THROTTLE rather than a hard-coded period: the capacity branch's compact-wire work moved the
+// public broadcast from 200 ms to its current 125 ms and this assertion was left behind, so it failed on the branch
+// itself. messaging.js arms a timer for the exact remainder, so coalesced sends are exactly one throttle apart.
+test('public changes coalesce to the DELAYS.PUBLIC_THROTTLE rate, deduplicate and retain immediate forced resync', () => {
   const h = makeMatch({ humans: 2, fake: true }).start();
   const m = h.m;
   try {
@@ -204,14 +208,17 @@ test('public changes coalesce to 5 Hz, deduplicate and retain immediate forced r
       h.ps('p_0').lp = i;
       m.markPublic(); m.flush(); h.sched.advance(10);
     }
+    const SPAN = 100 * 10, T = DELAYS.PUBLIC_THROTTLE;
     const updates = h.bc.filter((v) => v.t === 'm.public').slice(initial);
-    assert.equal(updates.length, 5);
-    for (let i = 1; i < updates.length; i++) assert.equal(updates[i].serverNow - updates[i - 1].serverNow, 200);
+    assert.equal(updates.length, Math.floor(SPAN / T), '1000 ms of changes coalesce at the throttle rate');
+    for (let i = 1; i < updates.length; i++) {
+      assert.equal(updates[i].serverNow - updates[i - 1].serverNow, T, 'consecutive sends are one throttle apart');
+    }
     assert.equal(updates.at(-1).players[0].lp, 100);
-    h.sched.advance(200); m.markPublic(); m.flush();
-    assert.equal(h.bc.filter((v) => v.t === 'm.public').length, initial + 5, 'identical view is not resent');
+    h.sched.advance(T); m.markPublic(); m.flush();
+    assert.equal(h.bc.filter((v) => v.t === 'm.public').length, initial + updates.length, 'identical view is not resent');
     h.sched.advance(1); m.flush(true);
-    assert.equal(h.bc.filter((v) => v.t === 'm.public').length, initial + 6);
+    assert.equal(h.bc.filter((v) => v.t === 'm.public').length, initial + updates.length + 1);
     assert.equal(h.bc.at(-1).serverNow, h.sched.now());
   } finally { m.dispose(); }
 });

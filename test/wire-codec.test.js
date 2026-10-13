@@ -17,14 +17,25 @@ const roundTrip = (v, direction = null) => decodeWire(clone(encodeWire(clone(v),
 const nameOf = (f) => typeof f === 'string' ? f : f[0];
 // Fields introduced after v1 was published use its existing extension slot. Keep this allowlist
 // explicit: adding a business field must not silently weaken coverage or renumber the fixed catalog.
-const V1_EXTENSIONS = Object.freeze({
+const C2S_V1_EXTENSIONS = Object.freeze({
   'room.create': ['assetCache'], 'room.join': ['assetCache'],
   'lobby.quickMatch': ['assetCache'], 'room.spectate': ['assetCache'],
 });
+// Server → client: a field added to an existing record after v1 was published has no free position either. It
+// travels in that record's extension slot (the codec keeps unregistered keys there), so the published table, the
+// message ids and the catalog fingerprint all stay untouched while the field still crosses the wire.
+const S2C_V1_EXTENSIONS = Object.freeze({
+  // Upstream 0.2.5 draws the leader pairing once per match (pairPlayers + Match.bossPairs) and broadcasts it in
+  // m.public; a page built on the published table simply ignores it and derives its own pairing view.
+  'm.public': ['bossPairs'],
+});
+const V1_EXTENSIONS = Object.freeze({ ...C2S_V1_EXTENSIONS, ...S2C_V1_EXTENSIONS });
 // Published v1 has no new numeric IDs: these post-v1 business types deliberately use its JSON fallback.
 const V1_JSON_FALLBACK = Object.freeze({
   c2s: ['room.chat', 'room.setMatchmaking', 'lobby.join', 'lobby.spectate'],
-  s2c: ['m.chat', 'm.chatState', 'm.emergency'],
+  // m.layer (upstream 0.2.5: own live prep layer gain, ephemeral) arrived after v1 was published and has no
+  // numeric id of its own; it travels as readable JSON, exactly like this branch's chat and emergency frames.
+  s2c: ['m.chat', 'm.chatState', 'm.emergency', 'm.layer'],
 });
 
 test('v1 complete catalog fingerprint prevents accidental published field or enum renumbering', () => {
@@ -49,13 +60,23 @@ test('wire ids cover every business message and C2S field or declared v1 extensi
     }
   }
   assert.equal(new Set(messages.map((m) => m.id)).size, messages.length);
+  // A declared extension must not sit in the published position table, and must really be carried: the codec writes
+  // it into the message's extension slot and reads it back (encodeRecord / decodeRecord in shared/wireCodec.js).
+  for (const [type, fields] of Object.entries(V1_EXTENSIONS)) {
+    const message = messages.find((entry) => entry.type === type);
+    for (const field of fields) {
+      assert.equal(message.fields.map(nameOf).includes(field), false, 'published v1 positions must not be extended in place');
+      const frame = { t: type, [field]: [[['p_0', 'p_1']]] };
+      assert.deepEqual(roundTrip(frame)[field], frame[field], `${type}.${field} must survive the extension slot`);
+    }
+  }
   for (const m of messages.filter((m) => m.direction === 'c2s')) {
     for (const key of Object.keys(C2S[m.type]).filter((key) => key !== '$optional')) {
-      assert.ok(m.fields.map(nameOf).includes(key) || V1_EXTENSIONS[m.type]?.includes(key),
+      assert.ok(m.fields.map(nameOf).includes(key) || C2S_V1_EXTENSIONS[m.type]?.includes(key),
         `${m.type}.${key} needs a stable position or an explicit v1 extension contract`);
     }
   }
-  for (const [type, fields] of Object.entries(V1_EXTENSIONS)) {
+  for (const [type, fields] of Object.entries(C2S_V1_EXTENSIONS)) {
     const message = messages.find((entry) => entry.type === type);
     for (const field of fields) {
       assert.ok(Object.hasOwn(C2S[type], field));
@@ -175,12 +196,15 @@ test('all schemas round-trip 2840 deterministic combinations of optional fields 
 });
 
 function noPublicExtensions(message) {
+  // Fields this branch and upstream added to m.public after v1 was published; each rides the extension slot.
+  // bossPairs: upstream 0.2.5 draws the leader pairing once per match and broadcasts it (Match.bossPairs).
+  const PUBLIC_EXTENSIONS = ['emergencyFrozen', 'emergencyFrozenAt', 'emergencyReason', 'bossPairs'];
   function record(v, fields, path) {
     if (v == null) return;
     const known = new Set(fields.map(nameOf));
     for (const k of Object.keys(v)) assert.ok(k === 't' || known.has(k)
       || (fields === WIRE_RECORDS.card && k === 'soldOut')
-      || (path === 'm.public' && ['emergencyFrozen', 'emergencyFrozenAt', 'emergencyReason'].includes(k)),
+      || (path === 'm.public' && PUBLIC_EXTENSIONS.includes(k)),
       `${path}.${k} needs an explicit position or declared v1 extension`);
     for (const field of fields) if (typeof field !== 'string' && Object.hasOwn(v, field[0])) {
       const [key, type] = field;

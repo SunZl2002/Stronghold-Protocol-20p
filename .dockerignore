@@ -21,3 +21,8 @@ scripts/service.env.cmd
 Thumbs.db
 .env
 .env.*
+# host-private announcements and server settings (SP_SERVER_SETTINGS_DIR / SP_ANNOUNCEMENTS_DIR);
+# the capacity branch writes these under runtime/, which is no part of the image
+runtime
+# per-machine manifest of locally extracted assets
+data/local-assets.json

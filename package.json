@@ -39,6 +39,8 @@
     "typecheck": "tsc --noEmit --checkJs -p jsconfig.json",
     "check:imports": "node tools/check-imports.mjs",
     "ci": "node tools/ci.mjs",
+    "verify:20p": "node tools/verify-20p.mjs",
+    "verify:20p:full": "node tools/verify-20p.mjs --full",
     "package": "node tools/package.mjs",
     "package:lite": "node tools/package.mjs --lite",
     "assets:pack": "node tools/asset-cache-pack.mjs"

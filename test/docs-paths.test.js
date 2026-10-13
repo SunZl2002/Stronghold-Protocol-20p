@@ -143,14 +143,30 @@ test('DESIGN: every "DESIGN §N" cited in the repository (code comments, tests, 
   assert.deepEqual(bad, [], 'citations of a section or subsection with no heading');
 });
 
+/**
+ * Links that are not on the line itself: a link written inside a fenced block is an EXAMPLE of what a reader should
+ * type elsewhere, not a link this document makes. rewritePlayerDoc below skips fenced blocks for the same reason, so
+ * the source check must too — `docs/ANNOUNCEMENTS.md` shows `![说明](assets/banner.png)`, which is relative to the
+ * server's announcement directory, not to the repository. Non-fenced links are still fully checked.
+ * @param {string} md @returns {string[]}
+ */
+function unfencedLinks(md) {
+  const out = [];
+  let fenced = false;
+  for (const line of md.split('\n')) {
+    if (/^\s*```/.test(line)) fenced = !fenced;
+    else if (!fenced) for (const m of line.matchAll(/\]\(([^)\s]+)\)/g)) out.push(m[1]);
+  }
+  return out;
+}
+
 test('shipped markdown: a source link exists or is releases/latest, and the packaged copy only links to shipped files', () => {
   const shipped = new Set(selectTracked(trackedFiles(ROOT)).keep);
   const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
   assert.ok(PLAYER_MARKDOWN.length >= 6, PLAYER_MARKDOWN.join(' '));
   for (const rel of PLAYER_MARKDOWN) {
     const md = readFileSync(join(ROOT, rel), 'utf8');
-    for (const m of md.matchAll(/\]\(([^)\s]+)\)/g)) {
-      const href = m[1];
+    for (const href of unfencedLinks(md)) {
       if (/^(?:[a-z]+:|#)/i.test(href)) continue;
       const raw = href.replace(/#.*$/, '');
       const norm = normalize(join(dirname(rel), raw)).split('\\').join('/');
@@ -158,8 +174,7 @@ test('shipped markdown: a source link exists or is releases/latest, and the pack
       else assert.ok(existsSync(join(ROOT, norm)), `${rel} → ${href}`);
     }
     const next = rewritePlayerDoc(md, rel, shipped, version);
-    for (const m of next.matchAll(/\]\(([^)\s]+)\)/g)) {
-      const href = m[1];
+    for (const href of unfencedLinks(next)) {
       if (/^(?:[a-z][a-z0-9+.-]*:|#)/i.test(href)) continue;
       const raw = href.replace(/#.*$/, '');
       const norm = normalize(join(dirname(rel), raw)).split('\\').join('/');

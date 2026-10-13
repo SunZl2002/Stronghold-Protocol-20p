@@ -94,6 +94,8 @@ Markdown 写法：
 ![队伍示意](assets/update/team.webp "队伍分组")
 ```
 
+> 上面是**示例**：`assets/banner.png` 相对公告存储目录，不是本仓库里的文件。
+
 `assets/` 固定表示公告存储目录下的图片目录，不表示草稿所在目录；`./assets/` 写法也支持。草稿仍可放在任何位置，`--file` 只复制 Markdown 正文，图片须由服主另行放到上述目录。使用 `SP_ANNOUNCEMENTS_DIR` 或 `--dir` 更改公告目录后，图片相应放在该目录的 `assets/` 中。
 
 图片通过本站 `/api/announcement-assets/` 地址只读提供，普通公告与紧急通知共用。仅支持 PNG、JPG/JPEG、GIF、WebP、AVIF 和 BMP；不支持外链、`public/assets` 图片、SVG、HTML 或本机磁盘路径。文件名与扩展名大小写在 Linux 上必须一致；文件名有空格时写成 `![说明](<assets/图片 1.png>)` 或将空格写成 `%20`。

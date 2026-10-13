@@ -8,6 +8,7 @@ import path from 'node:path';
 import { startServer } from '../server/index.js';
 import { createRequestHandler } from '../server/http/routes.js';
 import { Network, SessionRegistry } from '../server/net.js';
+import { BANDWIDTH_EMERGENCY_DEFAULTS } from '../server/bandwidthEmergency.js';
 import { TestClient } from './helpers/wsClient.js';
 
 const log = { info() {}, warn() {}, error() {}, debug() {} };
@@ -39,7 +40,9 @@ test('emergency cuts website traffic and new identities while preserving a real 
   assert.equal(server.bandwidthEmergency.trip('test-congestion'), true);
   const notice = await host.waitFor('m.emergency', (msg) => msg.active);
   assert.ok(JSON.stringify(notice).length < 200);
-  assert.equal(notice.retryAt - notice.since, 120000);
+  // Bound to the module default, not a literal: the auto-resume interval is 60 s (BANDWIDTH_EMERGENCY_DEFAULTS, and
+  // 开服必看.md documents the 60-second retry); this assertion still carried the earlier 120 s value.
+  assert.equal(notice.retryAt - notice.since, BANDWIDTH_EMERGENCY_DEFAULTS.autoResumeMs);
   await host.waitFor('m.public', (msg) => msg.emergencyFrozen);
   assert.equal(match.emergencyFrozen, true);
   assert.equal((await host.request({ t: 'g.infoReady' })).code, 'SERVER_EMERGENCY');
