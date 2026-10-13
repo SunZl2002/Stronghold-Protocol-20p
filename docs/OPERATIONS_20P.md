@@ -98,7 +98,7 @@ curl -s localhost:3000/healthz
 
 ## 3. 方式二：Docker
 
-仓库自带的 `Dockerfile` 与上游**逐字节相同**；编译 20 人版**不需要改它**。但它有三个必须知道的限制：
+仓库自带的 `Dockerfile` 与上游**逐字节相同**；编译 20 人版**不需要改它**。但它有四个必须知道的限制：
 
 1. **镜像里没有 `tools/`、`scripts/`、`packs/`** → 本手册里的服主命令（`tools/server-settings.mjs`、
    `tools/announcements.mjs`、`tools/asset-cache-pack.mjs`）**在容器内不存在**，必须挂载 `tools/` 或从宿主机源码跑。
@@ -106,31 +106,98 @@ curl -s localhost:3000/healthz
    公告和服主配置写不进去。**必须挂载 `runtime/` 并 chown 1000:1000**。
 3. **镜像不含游戏素材**（`.dockerignore` 排除 `public/assets`），也**不含提取好的战场场景**；
    `FETCH_ASSETS=1` 只补常规素材，场景需要本机客户端提取。素材请用只读卷挂载。
+4. **素材哈希索引写在 `.cache/`，不在 `runtime/` 下**（`.dockerignore` 也排除了 `.cache`）→
+   容器里如果 `/app/.cache` 不可写，服务器只能在内存里算哈希：**每次重启都要把
+   `public/assets` + `public/fonts` 全部重读一遍**（几百 MB，冷启动明显变慢）。
+   把 `.cache/` 也挂成可写卷，只在素材真的变了时才重扫。
+
+### 3.1 推荐的运行方式（四个卷）
 
 ```bash
-# 构建（FETCH_ASSETS=1 会在构建期下载常规素材；网络不好就用 0，稍后挂载）
-docker build -t stronghold-20p:0.2.5 --build-arg FETCH_ASSETS=1 .
+# 构建二选一：
+#   A) 构建期下载常规素材（需要联网，约 250 MB 起）
+docker build -t stronghold-20p:0.2.6 --build-arg FETCH_ASSETS=1 .
+#   B) 不带素材，全部靠挂载（推荐：素材留在宿主机，镜像小、升级只换镜像）
+docker build -t stronghold-20p:0.2.6 .
 
-# 运行：三个卷缺一不可
-mkdir -p runtime && sudo chown -R 1000:1000 runtime
+# 运行时写的两个目录（container 内是 node 用户 uid 1000）
+mkdir -p runtime .cache
+sudo chown -R 1000:1000 runtime .cache
+
 docker run -d --name stronghold \
   --restart unless-stopped \
   -p 3000:3000 \
   -v "$PWD/runtime:/app/runtime" \
+  -v "$PWD/.cache:/app/.cache" \
   -v "$PWD/tools:/app/tools:ro" \
   -v "$PWD/public/assets:/app/public/assets:ro" \
   -e SP_SERVER_SETTINGS_DIR=/app/runtime \
   -e SP_ANNOUNCEMENTS_DIR=/app/runtime/announcements \
-  stronghold-20p:0.2.5
+  stronghold-20p:0.2.6
+```
 
+四个卷各自解决什么：
+
+| 挂载 | 读写 | 为什么必须 |
+|---|---|---|
+| `runtime/` → `/app/runtime` | **读写**（chown 1000:1000） | 服主配置 `server-settings.json` 与公告正文/图片。**这是唯一需要备份的目录** |
+| `.cache/` → `/app/.cache` | **读写**（chown 1000:1000） | 素材哈希索引 `asset-hashes.json`。不挂 = 每次重启重扫全部素材；只读 = 同上（服务器退回内存计算） |
+| `tools/` → `/app/tools` | 只读 | 容器内没有 `tools/`，服主命令（配置、公告、打预缓存包）都要用它 |
+| `public/assets/` → `/app/public/assets` | 只读 | 镜像里没有素材。选 A 构建时可省，但仍建议挂载宿主机那份，便于单独更新素材 |
+
+**`public/fonts/` 与 `data/local-assets.json` 的注意点**：上游 `Dockerfile` 的注释写的是
+「`public/fonts`、`data/assets.json`、`data/local-assets.json` 若存在会被复制进去」，
+但 **20 人版的 `.dockerignore` 额外排除了 `data/local-assets.json`**（避免把某台机器提取过的结果
+带进公共镜像）。`.dockerignore` 优先于构建上下文，所以**这个文件在本分支不会被 COPY 进镜像** ——
+上游那句注释在本分支不再成立。要在容器里用**本地提取的棋盘/场景**，必须自己挂载：
+
+```bash
+  -v "$PWD/public/fonts:/app/public/fonts:ro" \
+  -v "$PWD/data/local-assets.json:/app/data/local-assets.json:ro" \
+  -v "$PWD/public/assets/local:/app/public/assets/local:ro"
+```
+
+镜像自带的 `Dockerfile` 跑的是 `node tools/fetch-assets.mjs`，**不会**下载/提取官方战场场景；
+场景素材在本机提取（见 §4），提取结果就在 `public/assets/` 下，因此挂载 `public/assets` 时一并生效。
+
+### 3.2 验证
+
+```bash
 curl -s localhost:3000/healthz
 docker exec -it stronghold node tools/server-settings.mjs show
+docker logs stronghold | grep -i 'asset'      # 看素材清单与哈希索引是否就绪
 ```
 
 构建参数只有两个：`NODE_IMAGE`（默认 `node:22-alpine`）、`FETCH_ASSETS`（默认 `0`）。
 
-> 建议同时给 `.dockerignore` 加一行 `runtime`，避免把宿主机的私有公告和配置送进构建上下文
-> （它们不会进镜像——没有对应 COPY——但没有理由让它们进上下文）。
+> `.dockerignore` 已经包含 `runtime` 与 `data/local-assets.json`（20 人版追加的两行），
+> 所以宿主机的私有公告、服主配置和本机提取清单不会进构建上下文。
+
+### 3.3 玩家侧的预缓存包（在宿主机打，不挂进容器）
+
+20 人版有预缓存功能（D016/D031）：服务器**在线**给玩家下发素材目录并限速补齐；
+想要「一次下完」的玩家则从服主这里拿一个素材 ZIP 在游戏里的「预缓存」面板本地导入。
+
+- **这个 ZIP 不是容器里的运行时目录，而是一次性分发包**，所以不在上面四个卷里。
+- 它必须由**服务器实际提供的那份素材**生成（校验会比目录内容版本、文件数与字节数，
+  对不上会被拒绝导入），因此在宿主机对同一份 `public/assets` + `public/fonts` 打包：
+
+  ```bash
+  # 在宿主机源码目录（与容器挂载的是同一份素材）
+  npm run assets:pack
+  # 产物默认在 .cache/asset-cache-pack/Stronghold-Protocol-assets-<版本12>.zip
+  # 只导出目录 JSON（不重写已分发的 ZIP）：
+  npm run assets:pack -- --catalog-only
+  # 自上次完整包以来的增量包：
+  npm run assets:pack -- --delta --base-catalog 旧目录.json
+  ```
+
+- **素材一变就要重打**：内容版本是全部文件 SHA-256 的摘要，改了素材而没重打，玩家导入会被拒。
+- 宿主机打包时 `git ...` 无关，但**不要把 `.cache/asset-cache-pack/` 也挂进容器** ——
+  容器不需要它，挂了只会让「哪个是权威素材」变得含糊。
+- 如果容器走的是 A 方案（构建期下载），宿主机上并没有那份素材；此时要么
+  `docker cp stronghold:/app/public/assets ./public/assets` 取回来再打包，
+  要么直接用 B 方案的挂载结构（推荐）。
 
 ---
 
@@ -174,6 +241,8 @@ node tools/fetch-assets.mjs --add-only
 | `PORT` / `HOST` | `3000` / `0.0.0.0` | 监听地址 |
 
 **`runtime/` 是唯一需要备份的数据目录**（公告正文、图片、服主配置）。
+`.cache/` 也建议挂成可写卷，但它**不需要备份**——里面只有可重建的哈希索引
+（删掉/丢了只会让下次启动重扫一遍素材），Docker 下见 §3.1。
 `runtime/`、`.cache/`、`public/assets/` 都已 gitignore；`tools/package.mjs` 也拒绝把 `runtime` 打进发布包。
 
 ### 5.2 服主命令（无需重启，约 1 秒生效）
