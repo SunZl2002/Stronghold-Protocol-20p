@@ -41,6 +41,11 @@ for (const [charId, skinList] of Object.entries(research.skins || {})) {
       avatar: avatarUrl,
     };
 
+    // 半身立绘（商店卡片那一张）：和 spine 一样，只在文件真的落地时才写 —— 上游只有一部分皮肤有立绘，
+    // 缺的那些让客户端回退到干员原皮立绘（tools/fetch-skin-portraits.mjs）
+    const localPortrait = path.join(ROOT, 'public', 'assets', 'char', 'skin_portrait', `${stem}.png`);
+    if (fs.existsSync(localPortrait)) skinEntry.portrait = `/assets/char/skin_portrait/${stem}.png`;
+
     // 只有在本地磁盘确实存在该皮肤的 Spine 骨骼时才注入 spine 字段，否则留空由渲染器平滑使用干员原皮骨骼
     const localFrontSkel = path.join(ROOT, 'public', 'assets', 'spine', 'op', charId, stem, 'front', `${stem}.skel`);
     if (fs.existsSync(localFrontSkel)) {
