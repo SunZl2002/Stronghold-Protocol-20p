@@ -196,6 +196,9 @@ test('Final Assault freezes overtime, silence handover and AI pacer; resumes the
   const m = h.m;
   h.toPrep();
   // Target-state fixture: directly enter the boss round, without simulating all preceding rounds.
+  // Upstream 0.2.5 draws the leader pairing per match, so pin it: this test needs BOTH a client field and a
+  // server field, i.e. the humans paired together and the bots paired together. pairPlayers keeps a given grouping.
+  m.bossPairs = [m.order.filter((p) => !p.isBot).map((p) => p.playerId), m.order.filter((p) => p.isBot).map((p) => p.playerId)];
   m.startRound(m.gd.bossRound);
   h.runToPhase(PHASE.PREP, m.gd.bossRound);
   assert.ok(h.drive(() => m.phase === PHASE.FINAL_ASSAULT));
@@ -203,6 +206,7 @@ test('Final Assault freezes overtime, silence handover and AI pacer; resumes the
   const field = m.fields.find((f) => f.mode === 'client');
   const authority = field.authority;
   const botField = m.fields.find((f) => f.mode === 'server');
+  assert.ok(field && botField, `expected one client and one server field, got ${m.fields.map((f) => f.mode).join(',')}`);
   const botTime = botField.battle.time;
   const lp = m.teamLp;
   const overtime = m.overtimeAt;
