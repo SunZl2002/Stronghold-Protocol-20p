@@ -2,7 +2,7 @@
 // Never broadcasts a complete room.state or match state to directory viewers.
 
 import { randomInt } from 'node:crypto';
-import { ERR, ROOM_CAPACITIES, MAX_SPECTATORS } from '../shared/constants.js';
+import { ERR, ROOM_CAPACITIES } from '../shared/constants.js';
 import { LOBBY_PAGE_SIZE, LOBBY_UPDATE_MS } from '../shared/lobbyDiscovery.js';
 import { encode, sendRaw } from './net.js';
 
@@ -36,7 +36,9 @@ export function roomSummary(room) {
     inMatch: !!room.match,
     joinable: room.allowMatchmaking !== false && room.mode === 'coop' && !room.match && room.freeSeat() >= 0,
     spectatorCount: room.spectators.length,
-    spectatable: room.mode === 'coop' && room.spectators.length < MAX_SPECTATORS,
+    // D034: the room's own cap (0 = spectating off), not the global ceiling.
+    spectatorCapacity: room.spectatorCapacity,
+    spectatable: room.mode === 'coop' && room.spectators.length < room.spectatorCapacity,
     hostOnline: !!host && !host.left && host.connected,
     disconnectedRetained: humanCount > 0 && connectedHumanCount === 0,
     createdAt: room.createdAt,

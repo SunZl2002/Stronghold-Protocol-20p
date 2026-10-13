@@ -11,7 +11,7 @@ import { startServer } from '../server/index.js';
 import { Net } from '../public/js/net.js';
 import { TestClient } from './helpers/wsClient.js';
 import { validateC2S } from '../shared/protocol.js';
-import { ERR, MAX_SPECTATORS } from '../shared/constants.js';
+import { ERR } from '../shared/constants.js';
 
 /** Preserve the match boundary and spectator hooks without combat or timers. */
 class HeldMatch {
@@ -185,7 +185,7 @@ test('playing statistics count connected present humans in matches, including el
   assert.equal(lobby.discovery.projection().playingCount, 0);
 });
 
-test('directory observation works before and during matches and preserves the two-slot reservation limit', (t) => {
+test('directory observation works before and during matches and preserves the room own spectator limit', (t) => {
   const { lobby, player, room, access, policy } = harness(t);
   const host = player('Host'), before = player('Before'), during = player('During'), third = player('Third');
   const r = room(host, 'coop', 4);
@@ -197,8 +197,16 @@ test('directory observation works before and during matches and preserves the tw
   assert.deepEqual(access(during, r, true), { ok: true });
   assert.equal(r.match.spectators.has(during.playerId), true);
   assert.equal(r.seats.filter(Boolean).length, 1, 'observers never take a player seat');
-  assert.equal(roomSummary(r).spectatorCount, MAX_SPECTATORS);
+  // D034: fill the room's own spectator cap (default 4), then the directory stops offering the seat.
+  const cap = r.spectatorCapacity;
+  const overflow = player('Overflow');
+  while (r.spectators.length < cap) {
+    const more = player(`Watcher${r.spectators.length}`);
+    assert.deepEqual(access(more, r, true), { ok: true });
+  }
+  assert.equal(roomSummary(r).spectatorCount, cap);
   assert.equal(roomSummary(r).spectatable, false);
+  error(access(overflow, r, true), ERR.ROOM_FULL);
   before.connected = false;
   lobby.onDisconnect(before);
   error(access(third, r, true), ERR.ROOM_FULL);

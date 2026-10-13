@@ -1,7 +1,7 @@
 // Normative message catalogue (DESIGN §8). Used by server (validation) and client (building requests).
 // Every client→server message is `{ t, rid?, ...fields }`. Unknown `t` or invalid fields ⇒ ERR.BAD_MSG.
 
-import { DIFFICULTIES, NAME_MAX_LEN, ROOM_CODE_LEN, MAX_SEATS, ROOM_CAPACITIES, MAX_DRAFT_CARDS, EMOTES, GEO } from './constants.js';
+import { DIFFICULTIES, NAME_MAX_LEN, ROOM_CODE_LEN, MAX_SEATS, ROOM_CAPACITIES, SPECTATOR_CAPACITIES, MAX_DRAFT_CARDS, EMOTES, GEO } from './constants.js';
 import { isDroppableChess } from './standIn.js';
 import { diySlotIds, validateDiyPicks } from './diy.js';
 import { cultivatedStats, isPotential, isCultivate, POTENTIAL_DEFAULT, CULTIVATE_DEFAULT } from './potential.js';
@@ -399,12 +399,15 @@ export const C2S = {
   'lobby.spectate': { roomId: isRoomId,
     assetCache: isAssetCacheReadiness, $optional: ['assetCache'] },
   'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v), capacity: (v) => ROOM_CAPACITIES.includes(v),
-    assetCache: isAssetCacheReadiness, $optional: ['capacity', 'assetCache'] },
+    spectatorCapacity: (v) => SPECTATOR_CAPACITIES.includes(v),
+    assetCache: isAssetCacheReadiness, $optional: ['capacity', 'spectatorCapacity', 'assetCache'] },
   'room.join': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v), assetCache: isAssetCacheReadiness, $optional: ['assetCache'] },
   'room.leave': {},
   'room.ready': { ready: isBool },
   'room.setDifficulty': { difficulty: (v) => DIFFICULTIES.includes(v) },
   'room.setCapacity': { capacity: (v) => ROOM_CAPACITIES.includes(v) },
+  // D034: the host picks this room's spectator seats before the match; 0 turns spectating off for the room.
+  'room.setSpectatorCapacity': { capacity: (v) => SPECTATOR_CAPACITIES.includes(v) },
   'room.setMatchmaking': { allowed: isBool },
   // Upstream compatibility: this branch exposes the manual-human-first rule as fixed on; disabling is refused.
   'room.setAiPicksLast': { on: isBool },

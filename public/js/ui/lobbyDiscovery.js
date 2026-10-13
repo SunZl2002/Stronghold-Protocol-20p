@@ -1,5 +1,5 @@
 // Presentational lobby discovery controls; admission and ranking are decided by the server.
-import { ROOM_CAPACITIES, MAX_SPECTATORS } from '../../../shared/constants.js';
+import { ROOM_CAPACITIES, DEFAULT_SPECTATORS } from '../../../shared/constants.js';
 import { t } from '../../../shared/i18n.js';
 import { html, Button, Icon, MicroLabel, Spinner, DifficultyTag, Modal } from './components.js';
 
@@ -18,7 +18,10 @@ export function LobbyRoomRow({ room, onJoin, onSpectate, busy, connected }) {
   const roomId = typeof room.roomId === 'string' && room.roomId ? room.roomId : null;
   const code = allowed && typeof room.code === 'string' && room.code ? room.code : null;
   const spectatorCount = Number.isInteger(room.spectatorCount) && room.spectatorCount >= 0 ? room.spectatorCount : 0;
-  const spectatorsFull = spectatorCount >= MAX_SPECTATORS;
+  // D034: every room carries its own cap (0 = spectating off). A server that predates it sends none — then fall back
+  // to the shipped default so an older server still shows a sane "n / 4" instead of hiding the control.
+  const spectatorCap = Number.isInteger(room.spectatorCapacity) && room.spectatorCapacity >= 0 ? room.spectatorCapacity : DEFAULT_SPECTATORS;
+  const spectatorsFull = spectatorCount >= spectatorCap;
   const state = room.inMatch ? t('进行中') : !coop ? t('独立模拟')
     : room.playerCount >= room.capacity ? t('房间已满') : room.joinable ? t('等候加入') : t('等候中');
   const privateHint = t('房主已关闭公开匹配，仅能通过邀请码加入。');
@@ -42,10 +45,10 @@ export function LobbyRoomRow({ room, onJoin, onSpectate, busy, connected }) {
       ${room.inMatch ? null : html`<${Button} variant="secondary" size="sm" iconRight="chevronRight"
         class="lobby-directory__join" title=${allowed ? null : privateHint}
         disabled=${!!busy || !connected || !roomId || !allowed || !room.joinable} onClick=${() => onJoin(roomId)}>${t('加入房间')}<//>`}
-      <${Button} variant="secondary" size="sm" icon="eye" class="lobby-directory__spectate"
-        title=${t('观战席 {used} / {capacity}', { used: spectatorCount, capacity: MAX_SPECTATORS })}
+      ${spectatorCap > 0 ? html`<${Button} variant="secondary" size="sm" icon="eye" class="lobby-directory__spectate"
+        title=${t('观战席 {used} / {capacity}', { used: spectatorCount, capacity: spectatorCap })}
         disabled=${!!busy || !connected || !roomId || room.spectatable !== true || spectatorsFull}
-        onClick=${() => onSpectate(roomId)}>${spectatorsFull ? t('观战席已满') : t('观战')}<//>
+        onClick=${() => onSpectate(roomId)}>${spectatorsFull ? t('观战席已满') : t('观战')}<//>` : null}
     </div>` : null}
   </div>`;
 }

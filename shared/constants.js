@@ -22,8 +22,16 @@ export const MAX_DRAFT_CARDS = 6;
  * room has 1–4 players and no spectator seat (there only eliminated players and 联防 bystanders watch, research 09 §3.1).
  * A spectator never counts as a player, may not act, and watches like an eliminated player (server/lobby.js spectate,
  * server/match/match/watch.js addSpectator).
+ *
+ * D034 (this branch): the cap is per room and the host picks it before the match, default 4. Upstream fixed it at 2 and
+ * declined a per-room option (docs/history/0.2.2.md §27.50) because every spectator costs about one more full room
+ * broadcast, mostly the 8 Hz m.public; with the compact wire that stream measured ~27 kbps per connection, so a
+ * 20-seat room plus 8 spectators stays inside the 0.8 Mbps budget test/wire-pressure.test.js already exercises.
+ * MAX_SPECTATORS is the absolute ceiling a room may ask for; 0 turns spectating off for that room.
  */
-export const MAX_SPECTATORS = 2;
+export const MAX_SPECTATORS = 8;
+export const DEFAULT_SPECTATORS = 4;
+export const SPECTATOR_CAPACITIES = Object.freeze([0, 2, 4, 6, 8]);
 export const ROOM_CODE_LEN = 4;
 export const NAME_MAX_LEN = 12;
 

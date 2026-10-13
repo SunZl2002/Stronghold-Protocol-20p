@@ -13,7 +13,7 @@
 // Texts go through t() (docs/I18N.md).
 
 import { useEffect, useRef, useState } from '../../vendor/hooks.module.js';
-import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, MAX_SEATS, DEFAULT_SEATS, ROOM_CAPACITIES, MAX_SPECTATORS } from '../../../shared/constants.js';
+import { DIFFICULTIES, DIFFICULTY_NAMES, DIFFICULTY_COLORS, MAX_SEATS, DEFAULT_SEATS, ROOM_CAPACITIES, SPECTATOR_CAPACITIES, DEFAULT_SPECTATORS } from '../../../shared/constants.js';
 import {
   html, Button, Icon, MicroLabel, PingPill, AvatarFrame, DifficultyTag, DifficultyIcon, Tooltip, confirmDialog, doctorNo,
 } from '../ui/components.js';
@@ -81,8 +81,23 @@ export function roomFacts(room, myId) {
     othersReady,
     // spectator seats (never players: not in `humans`, never counted for ready / start)
     spectators: Array.isArray(room?.spectators) ? room.spectators.filter((s) => s && typeof s === 'object') : [],
+    // D034: the room's own spectator cap (0 = off for this room); the host may change it while waiting.
+    spectatorCapacity: normalizeSpectatorCapacity(room),
+    canSetSpectatorCapacity: waiting && isHost && room?.mode === 'coop' && !!mine && !mine.isBot && !mine.left,
     spectating: isSpectating(room, myId),
   };
+}
+
+/**
+ * D034: a room's spectator cap, clamped to the offerable set. A server that predates the option sends no field —
+ * fall back to the shipped default rather than hiding the seats.
+ * @param {any} room @returns {number}
+ */
+export function normalizeSpectatorCapacity(room) {
+  if (room?.mode === 'solo') return 0;
+  const v = room?.spectatorCapacity;
+  if (Number.isInteger(v) && SPECTATOR_CAPACITIES.includes(v)) return v;
+  return DEFAULT_SPECTATORS;
 }
 
 /**
@@ -180,9 +195,12 @@ export function SeatCard({ seat, index, room, facts, myId, busy, onAddBot, onRem
 
 /** 观战席: the room's spectators (host: ✕ frees a seat), and 入座 for a spectator while a player seat is free. */
 function SpectatorBar({ facts, myId, busy, onRemove, onSit }) {
-  if (!facts.spectators.length) return null;
+  const cap = facts.spectatorCapacity;
+  // D034: when spectating is off for this room and nobody is watching, there is nothing to show. A host can turn it
+  // back on from the settings panel, so keep the bar while it is a host and the room is still waiting.
+  if (!facts.spectators.length && !(facts.canSetSpectatorCapacity && cap > 0)) return null;
   return html`<section class="specbar" aria-label=${t('观战席')}>
-    <span class="specbar__label"><${Icon} name="eye" />${t('观战席')}<b class="num">${facts.spectators.length}</b><span class="num t-dim">/${MAX_SPECTATORS}</span></span>
+    <span class="specbar__label"><${Icon} name="eye" />${t('观战席')}<b class="num">${facts.spectators.length}</b><span class="num t-dim">/${cap}</span></span>
     ${facts.spectators.map((s) => html`<span key=${s.playerId} class=${`specbar__who${s.playerId === myId ? ' is-me' : ''}${s.connected === false ? ' is-offline' : ''}`}>
       ${s.connected === false ? html`<${Icon} name="wifiOff" />` : null}${s.name || t('博士')}${s.playerId === myId ? html`<span class="seat__you">${t('你')}</span>` : null}
       ${facts.isHost ? html`<${Button} variant="ghost" size="sm" square=${true} icon="close" loading=${busy === `rs${s.playerId}`}
@@ -260,6 +278,26 @@ function CapacityPicker({ room, facts, busy, connected, onPick, onMatchmaking })
   </div>`;
 }
 
+/**
+ * D034: the host's spectator-seat picker. Sits next to the seat capacity and follows the same rules — host only,
+ * waiting room only, and a value below the seats already taken is refused by the server (and disabled here) so the
+ * host removes a spectator first rather than having one silently dropped.
+ */
+function SpectatorCapacityPicker({ facts, busy, onPick }) {
+  const cap = facts.spectatorCapacity;
+  const taken = facts.spectators.length;
+  return html`<div class="room-spec-capacity" aria-label=${t('观战席上限')}>
+    <span class="room-capacity__label"><${Icon} name="eye" />${t('观战席上限')} <b class="num">${cap}</b></span>
+    ${facts.canSetSpectatorCapacity ? html`<div class="room-capacity__options" role="radiogroup" aria-label=${t('调整观战席上限')}>
+      ${SPECTATOR_CAPACITIES.map((n) => html`<button key=${n} type="button" role="radio" aria-checked=${cap === n ? 'true' : 'false'}
+        class=${`room-capacity__opt${cap === n ? ' is-active' : ''}`} disabled=${!!busy || n < taken}
+        title=${n < taken ? t('先移除超出的观战者') : n === 0 ? t('本房不开放观战') : t('观战席 {n} 个', { n })}
+        onClick=${() => n !== cap && onPick(n)}>${n}</button>`)}
+    </div>` : html`<span class="t-dim">${t('由房主设置')}</span>`}
+    <span class="room-capacity__count num">${taken} / ${cap}</span>
+  </div>`;
+}
+
 /** D004 is a fixed co-op rule, including managed and disconnected human seats after manual humans. */
 function AiLastRule({ option }) {
   if (!option) return null;
@@ -320,6 +358,7 @@ export function RoomScreen() {
   });
   const setDifficulty = (difficulty) => run('diff', () => net.request('room.setDifficulty', { difficulty }));
   const setCapacity = (capacity) => run('capacity', () => net.request('room.setCapacity', { capacity }));
+  const setSpectatorCapacity = (capacity) => run('specCapacity', () => net.request('room.setSpectatorCapacity', { capacity }));
   const setMatchmaking = (allowed) => run('matchmaking', () => net.request('room.setMatchmaking', { allowed }));
   // spectator seats: the host frees one; a spectator takes a free player seat with room.join of this room
   const removeSpectator = (playerId) => run(`rs${playerId}`, () => net.request('room.removeSpectator', { playerId }));
@@ -384,6 +423,7 @@ export function RoomScreen() {
     </header>
 
     ${coop ? html`<${CapacityPicker} room=${room} facts=${facts} busy=${busy} connected=${online} onPick=${setCapacity} onMatchmaking=${setMatchmaking} />` : null}
+    ${coop ? html`<${SpectatorCapacityPicker} facts=${facts} busy=${busy} onPick=${setSpectatorCapacity} />` : null}
     <main class=${`seats${coop ? facts.seats.length > 10 ? ' seats--dense' : facts.seats.length > 4 ? ' seats--expanded' : '' : ' seats--solo'}${coop && facts.seats.length === 10 ? ' seats--ten' : ''}`}>
       ${facts.seats.map((s, i) => html`<${SeatCard} key=${s ? `p${s.playerId}` : `e${i}`} seat=${s} index=${i} room=${room} facts=${facts}
         myId=${me.playerId} busy=${busy} onAddBot=${addBot} onRemoveBot=${removeBot} onKick=${kick} onTransferHost=${transferHost} />`)}

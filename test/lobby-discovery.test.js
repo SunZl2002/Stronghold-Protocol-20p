@@ -130,7 +130,7 @@ test('paged directory clamps pages and contains only the declared public summary
   assert.equal(first.totalPages, 3);
   assert.deepEqual(Object.keys(first.rooms[0]), [
     'code', 'roomId', 'allowMatchmaking', 'mode', 'difficulty', 'capacity', 'playerCount', 'humanCount', 'botCount',
-    'inMatch', 'joinable', 'spectatorCount', 'spectatable', 'hostOnline', 'disconnectedRetained', 'createdAt',
+    'inMatch', 'joinable', 'spectatorCount', 'spectatorCapacity', 'spectatable', 'hostOnline', 'disconnectedRetained', 'createdAt',
   ]);
   lobby.discovery.watch(watcher, { on: true, list: true, page: 1 });
   const middle = watcher.frames.at(-1);

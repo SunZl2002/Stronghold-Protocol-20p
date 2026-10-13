@@ -18,7 +18,7 @@ const nameOf = (f) => typeof f === 'string' ? f : f[0];
 // Fields introduced after v1 was published use its existing extension slot. Keep this allowlist
 // explicit: adding a business field must not silently weaken coverage or renumber the fixed catalog.
 const C2S_V1_EXTENSIONS = Object.freeze({
-  'room.create': ['assetCache'], 'room.join': ['assetCache'],
+  'room.create': ['assetCache', 'spectatorCapacity'], 'room.join': ['assetCache'],
   'lobby.quickMatch': ['assetCache'], 'room.spectate': ['assetCache'],
 });
 // Server → client: a field added to an existing record after v1 was published has no free position either. It
@@ -32,7 +32,7 @@ const S2C_V1_EXTENSIONS = Object.freeze({
 const V1_EXTENSIONS = Object.freeze({ ...C2S_V1_EXTENSIONS, ...S2C_V1_EXTENSIONS });
 // Published v1 has no new numeric IDs: these post-v1 business types deliberately use its JSON fallback.
 const V1_JSON_FALLBACK = Object.freeze({
-  c2s: ['room.chat', 'room.setMatchmaking', 'lobby.join', 'lobby.spectate'],
+  c2s: ['room.chat', 'room.setMatchmaking', 'room.setSpectatorCapacity', 'lobby.join', 'lobby.spectate'],
   // m.layer (upstream 0.2.5: own live prep layer gain, ephemeral) arrived after v1 was published and has no
   // numeric id of its own; it travels as readable JSON, exactly like this branch's chat and emergency frames.
   s2c: ['m.chat', 'm.chatState', 'm.emergency', 'm.layer'],

@@ -31,7 +31,7 @@ test('preference capacities use the same canonical values as room creation and d
 
 const room = { roomId: 'public-room-id', code: 'ABCD', mode: 'coop', difficulty: 'FUNNY', capacity: 20,
   playerCount: 10, humanCount: 2, botCount: 8, inMatch: false, joinable: true, hostOnline: false,
-  allowMatchmaking: true, spectatorCount: 0, spectatable: true };
+  allowMatchmaking: true, spectatorCount: 0, spectatorCapacity: 4, spectatable: true };
 const action = (row, name) => [...walk(row)].find((node) => node.type === Button && node.props.class === `lobby-directory__${name}`);
 
 test('directory exposes room code, capacity, AI occupancy and host-disconnected admission without replacing AI', () => {
@@ -66,6 +66,7 @@ test('running co-op rooms offer observation only; solo has no entry and full wai
 
 test('closed matchmaking hides invite codes even in malformed summaries and preserves observation', () => {
   const watched = [];
+  // D034: the room's own cap drives the "used / cap" text; the fixture carries 4 from the default room above.
   const privateRoom = { ...room, code: 'SECRET', allowMatchmaking: false, joinable: false, spectatorCount: 1 };
   const row = LobbyRoomRow({ room: privateRoom, connected: true, onSpectate: (id) => watched.push(id) });
   assert.equal(Object.hasOwn(row.props, 'data-room-code'), false);
@@ -79,7 +80,7 @@ test('closed matchmaking hides invite codes even in malformed summaries and pres
   assert.match(action(row, 'join').props.title, /邀请码/);
   const spectate = action(row, 'spectate');
   assert.equal(spectate.props.disabled, false);
-  assert.equal(spectate.props.title, '观战席 1 / 2');
+  assert.equal(spectate.props.title, `观战席 1 / ${room.spectatorCapacity}`);
   spectate.props.onClick();
   assert.deepEqual(watched, [room.roomId]);
   const rooms = [{ ...privateRoom, code: null }, { ...privateRoom, code: null, roomId: 'another-id' }];
@@ -88,12 +89,16 @@ test('closed matchmaking hides invite codes even in malformed summaries and pres
 });
 
 test('spectator capacity and server admission are authoritative; busy, offline and missing-id actions are disabled', () => {
-  const full = LobbyRoomRow({ room: { ...room, spectatorCount: 2, spectatable: false }, connected: true });
+  // D034: the room's own spectatorCapacity is the authority, not a global constant.
+  const full = LobbyRoomRow({ room: { ...room, spectatorCount: room.spectatorCapacity, spectatable: false }, connected: true });
   assert.equal(action(full, 'spectate').props.disabled, true);
   assert.match(text(action(full, 'spectate')), /观战席已满/);
   assert.equal(action(full, 'join').props.disabled, false);
   const refused = LobbyRoomRow({ room: { ...room, spectatable: false }, connected: true });
   assert.equal(action(refused, 'spectate').props.disabled, true);
+  // a room that offers no spectator seats (0) shows no watch control at all
+  const off = LobbyRoomRow({ room: { ...room, spectatorCapacity: 0, spectatable: false }, connected: true });
+  assert.equal(action(off, 'spectate'), undefined);
   for (const patch of [{ busy: true }, { connected: false }, { room: { ...room, roomId: undefined } }]) {
     const row = LobbyRoomRow({ room, connected: true, ...patch });
     assert.equal(action(row, 'join').props.disabled, true);

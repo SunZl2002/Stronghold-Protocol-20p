@@ -19,7 +19,7 @@ import { sanitizeName, TokenBucket, SessionRegistry, clientAddress, normalizeIp,
 import { StubMatch as Match } from '../server/match/StubMatch.js';
 import { Match as RealMatch } from '../server/match/Match.js';
 import { TestClient } from './helpers/wsClient.js';
-import { ERR, BASE_SEATS, MAX_SEATS, MAX_SPECTATORS, PHASE, EMOTES } from '../shared/constants.js';
+import { ERR, BASE_SEATS, MAX_SEATS, MAX_SPECTATORS, DEFAULT_SPECTATORS, PHASE, EMOTES } from '../shared/constants.js';
 
 const CODE_RE = new RegExp(`^[${CODE_ALPHABET}]{4}$`);
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -630,9 +630,10 @@ describe('websocket lobby', () => {
     // the cap; spectators never count toward the players: two player seats still free
     const s2 = await pool.player('Watcher2');
     await expectOk(s2, { t: 'room.spectate', code: st.code });
-    assert.equal(MAX_SPECTATORS, 2);
+    // D034: the room's own cap (default 4) is the authority, not a global ceiling
+    assert.equal(st.spectatorCapacity, DEFAULT_SPECTATORS);
+    assert.equal(MAX_SPECTATORS, 8, 'the ceiling a room may ask for');
     const s3 = await pool.player('Watcher3');
-    await expectError(s3, { t: 'room.spectate', code: st.code }, ERR.ROOM_FULL);
     await joinRoom(s3, st.code);
     await expectOk(host, { t: 'room.addBot' });
     const full = await host.waitFor('room.state', (s) => s.seats.every(Boolean));
@@ -988,12 +989,15 @@ describe('websocket lobby', () => {
         if (m.t === 'g.emote' && rnd() < 0.5) m.id = 'autochess_battle_happy';
         return m;
       }
-      // spectator seats (community report #26)
-      if (r < 0.95) {
+      // spectator seats (community report #26). D034 gives a room real seats, so a client can hold one and then
+      // be unable to host or answer g.infoReady; hand it back sometimes so the round trip below stays reachable.
+      if (r < 0.91) return { t: 'room.leave' };
+      if (r < 0.96) {
         return rnd() < 0.7
           ? { t: 'room.spectate', code: pick([...codes(), 'ZZZZ', ...codes().map((c) => c.toLowerCase())]) || 'QQQQ' }
           : { t: 'room.removeSpectator', playerId: pick([...clients.map((x) => x.id), 'p_nope', 1]) };
       }
+      if (r < 0.93) return { t: 'room.spectate', code: pick([...codes(), 'ZZZZ']) || 'QQQQ' };
       return pick([{ t: 'hello', name: pick(['Re', '', 'x'.repeat(20)]) }, { t: 'ping', c: pick([1, 'x']) }, { t: pick(['nope', '__proto__', 'toString']) }, { t: 'room.join', code: pick(junk) }]);
     };
     const okCounts = {};
@@ -1015,7 +1019,18 @@ describe('websocket lobby', () => {
       if (reply.t === 'error') assert.ok(Object.hasOwn(ERR, reply.code), reply.code);
       if (i % 50 === 0) await delay(30); // stay well under the rate limit
     }
-    for (const t of ['room.create', 'room.join', 'room.start', 'room.addBot', 'g.infoReady']) assert.ok(okCounts[t] > 0, `fuzz never succeeded at ${t}`);
+    for (const t of ['room.create', 'room.join', 'room.start', 'room.addBot']) assert.ok(okCounts[t] > 0, `fuzz never succeeded at ${t}`);
+    // g.infoReady needs a non-host human in a room whose host started the match, all at the same moment; with real
+    // spectator seats a client may be watching instead. Prove that round trip deterministically: a solo room has one
+    // human, who starts it and is then the one answering. A spectator has to take a player seat again first.
+    {
+      const c = clients[0];
+      await c.request({ t: 'room.leave' }, 3000);
+      assert.equal((await c.request({ t: 'room.create', mode: 'solo', difficulty: 'NORMAL' }, 3000)).t, 'ok');
+      assert.equal((await c.request({ t: 'room.start' }, 3000)).t, 'ok');
+      const ready = await c.request({ t: 'g.infoReady' }, 3000);
+      assert.equal(ready.t, 'ok', `g.infoReady after a real start: ${JSON.stringify(ready)}`);
+    }
     // invariants
     const seen = new Set();
     for (const room of srv.lobby.rooms.values()) {

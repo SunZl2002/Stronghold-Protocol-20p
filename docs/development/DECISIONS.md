@@ -367,3 +367,16 @@
 - 生效阈值不变：容量特性在**开局实际占用席位 ≥ 6** 时才改变玩法；1–4 人（含独立模拟）行为必须与上游逐位一致。`test/golden/*.json` 使用上游基准、分支不得修改，这是该边界的强制证明。
 - 原因：上游持续修复数值与 bug，分裂维护会让 20 人版长期落后；用户要求同步更新且 20 人特性不被覆盖。用「决定表 + 守卫测试 + 金标准」三层保证，而不是依赖 git 自动合并。
 - 依据：本次合并记录见 [SYNC_20P.md](SYNC_20P.md) §7；验证 `test/golden.test.js` 9/9 通过（未 update 上游基准）、容量与库存回归 166/166 通过。
+
+## D034
+
+**生效：观战席由每房房主设置，默认 4，可选 0 / 2 / 4 / 6 / 8；0 表示该房不开放观战。**
+
+- 常量：`DEFAULT_SPECTATORS = 4`、`SPECTATOR_CAPACITIES = [0,2,4,6,8]`、`MAX_SPECTATORS = 8`（房主可申请的上限）。房间自己的 `Room.spectatorCapacity` 是唯一裁判，`server/lobby.js` 的 `room.spectate` 用它封顶。
+- 只有**等候房的房主**能改（`room.setSpectatorCapacity`）；开局后拒绝（`ROOM_STARTED`），与人数上限、公开匹配开关同规。非房主 `NOT_HOST`，不在可选集合内 `BAD_MSG`。
+- **下调不得静默挤掉正在观看的人**：目标值低于当前观战人数时返回 `BAD_TARGET`，房主先在名单里移除（沿用原有 `room.removeSpectator`）。这与 `setCapacity` 拒绝「已占席位超出目标容量」同一取向。上调随时可做，0→4 可来回切，是活设置而非单向开关。
+- 观战者仍不占玩家席位、不计入开局实际人数、不参与「游玩人数」，也不影响组队/卡池/联防（D001、D017 的边界不变）。独立模拟房（solo）恒为 0 席，与上游一致。
+- 协议：`room.state` 与大厅目录摘要各带一个 `spectatorCapacity` 字段（都走 **compact v1 扩展位**，已发布的位置表与 `WIRE_VERSION = 1` 指纹不变）；房间目录的 `spectatable` 改用该房上限；`room.create` 可带可选的 `spectatorCapacity`；新意图 `room.setSpectatorCapacity` 属 post-v1 消息，走**可读 JSON 回退**（与 `room.setMatchmaking`、`room.chat` 同类），不新增 v1 编号。
+- 界面：等候房在人数上限旁给出观战上限选择器（房主可点，其他人只读），观战席条显示 `已用 / 本房上限`，上限为 0 且无人观看时不显示该条；大厅房间行按本房上限显示「观战席 n / N」，上限为 0 的房间不出现观战入口。
+- 原因与取舍：**这修订了上游 0.2.2 §27.50 的既有决定**（作者当时以「观战人数越多，战斗广播的流量也越大」为由，拒绝了把上限做成每房 0–8、并保持固定 2 席）。用户明确要求默认 4 且房主可调。带宽依据：紧凑协议实测单连接公共状态约 27 kbps（原 JSON 3.84 Mbps，−99.29%），8 Hz 下 20 席房加 8 名观战者仍在 `test/wire-pressure.test.js`（84 连接、共享 0.8 Mbps）已覆盖的量级内；上限维持在 8 而非无限制，正是保留这条带宽边界。真正的风险点是**未刷新的旧页面**（单客户端约 2.85 Mbps），见 [OPERATIONS_20P.md](../OPERATIONS_20P.md) §6。
+- 依据：用户 2026-10-12 的决定；入口 `shared/constants.js`、`server/lobby.js`（`Room`、`spectate`、`setSpectatorCapacity`、`create`）、`server/lobbyDiscovery.js`、`shared/protocol.js`、`public/js/screens/room.js`、`public/js/ui/lobbyDiscovery.js`；测试 `test/lobby-capacity.test.js`（D034 用例）、`test/lobby.test.js`（观战席位与模糊测试）、`test/ui/lobby-discovery-ui.test.js`、`test/lobby-discovery.test.js`、`test/wire-codec.test.js`。

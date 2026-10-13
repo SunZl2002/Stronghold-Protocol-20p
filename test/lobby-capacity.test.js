@@ -8,7 +8,7 @@ import { StubMatch } from '../server/match/StubMatch.js';
 import { Lobby } from '../server/lobby.js';
 import { SessionRegistry } from '../server/net.js';
 import { TestClient } from './helpers/wsClient.js';
-import { ROOM_CAPACITIES, DEFAULT_SEATS, MAX_SEATS, MAX_DRAFT_CARDS } from '../shared/constants.js';
+import { ROOM_CAPACITIES, DEFAULT_SEATS, MAX_SEATS, MAX_DRAFT_CARDS, DEFAULT_SPECTATORS, MAX_SPECTATORS, SPECTATOR_CAPACITIES, ERR } from '../shared/constants.js';
 import { validateC2S } from '../shared/protocol.js';
 import { writeServerSettings } from '../server/serverSettings.js';
 
@@ -166,6 +166,66 @@ test('resizing preserves full seat identity and mixed ready states after host tr
   assert.equal(lobby.setCapacity(newHost, { capacity: 8 }).error, 'ROOM_STARTED');
   assert.equal(room.capacity, 4);
   assert.deepEqual(room.seats, matchSeats);
+});
+
+test('D034: the room spectator cap is per room, host-set, and never evicts a watcher', (t) => {
+  const registry = new SessionRegistry();
+  class HeldMatch { constructor(opts) { this.seats = opts.seats; } start() {} dispose() {} }
+  const lobby = new Lobby({ registry, MatchClass: HeldMatch, getData: () => ({}), seedFn: () => 1 });
+  t.after(() => lobby.shutdown());
+  const player = (name) => {
+    const session = registry.create(name);
+    session.connected = true;
+    session.ws = { readyState: 1, bufferedAmount: 0, send() {} };
+    return session;
+  };
+  const ok = (reply) => assert.deepEqual(reply, { ok: true });
+  const host = player('Host');
+  const guest = player('Guest');
+  const watcher = player('Watcher');
+  ok(lobby.create(host, { mode: 'coop', difficulty: 'NORMAL', capacity: 4 }));
+  const room = lobby.getRoom(host.roomCode);
+  assert.equal(room.spectatorCapacity, DEFAULT_SPECTATORS, 'D034: default 4');
+  assert.equal(room.toState().spectatorCapacity, DEFAULT_SPECTATORS, 'and it rides room.state');
+  // the boundary: only the offerable values exist, and the ceiling bounds them
+  assert.equal(validateC2S({ t: 'room.setSpectatorCapacity', capacity: 3 }), 'bad field capacity');
+  for (const capacity of SPECTATOR_CAPACITIES) {
+    assert.equal(capacity <= MAX_SPECTATORS, true, `${capacity} within the ceiling`);
+    assert.equal(validateC2S({ t: 'room.setSpectatorCapacity', capacity }), null);
+  }
+  // a solo room never offers a seat, whatever a caller asks for
+  const soloHost = player('Solo');
+  ok(lobby.create(soloHost, { mode: 'solo', difficulty: 'NORMAL', spectatorCapacity: 4 }));
+  assert.equal(lobby.getRoom(soloHost.roomCode).spectatorCapacity, 0, 'solo rooms offer none');
+  ok(lobby.leave(soloHost));
+  // only the host, and only while the room waits
+  ok(lobby.join(guest, { code: room.code }));
+  assert.equal(lobby.setSpectatorCapacity(guest, { capacity: 2 }).error, ERR.NOT_HOST);
+  assert.equal(lobby.setSpectatorCapacity(host, { capacity: 1 }).error, ERR.BAD_MSG);
+  ok(lobby.setSpectatorCapacity(host, { capacity: 2 }));
+  assert.equal(room.spectatorCapacity, 2);
+  ok(lobby.spectate(watcher, { code: room.code }));
+  const second = player('Second');
+  ok(lobby.spectate(second, { code: room.code }));
+  assert.equal(room.spectators.length, 2, 'the room cap 2 is reachable');
+  const extra = player('Extra');
+  assert.equal(lobby.spectate(extra, { code: room.code }).error, ERR.ROOM_FULL, 'the room cap bounds it, not the ceiling');
+  // lowering under the seated spectators is refused; the host frees the seats first (never a silent eviction)
+  assert.equal(lobby.setSpectatorCapacity(host, { capacity: 0 }).error, ERR.BAD_TARGET);
+  assert.equal(room.spectators.length, 2, 'both watchers keep their seats');
+  ok(lobby.removeSpectator(host, { playerId: watcher.playerId }));
+  ok(lobby.removeSpectator(host, { playerId: second.playerId }));
+  ok(lobby.setSpectatorCapacity(host, { capacity: 0 }));
+  const blocked = player('Blocked');
+  assert.equal(lobby.spectate(blocked, { code: room.code }).error, ERR.ROOM_FULL, '0 closes spectating');
+  assert.equal(room.spectatorCapacity, 0);
+  // a live setting while the room waits, frozen once the sim starts — like the seat capacity
+  ok(lobby.setSpectatorCapacity(host, { capacity: MAX_SPECTATORS }));
+  assert.equal(room.spectatorCapacity, MAX_SPECTATORS);
+  ok(lobby.ready(guest, { ready: true }));
+  ok(lobby.start(host));
+  assert.equal(lobby.setSpectatorCapacity(host, { capacity: 2 }).error, ERR.ROOM_STARTED);
+  assert.equal(room.spectatorCapacity, MAX_SPECTATORS, 'the running room keeps its cap');
 });
 
 test('twenty real WebSocket players can join and start the same co-op room', async (t) => {
