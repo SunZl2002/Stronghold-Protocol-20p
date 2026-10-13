@@ -500,7 +500,10 @@ export const S2C = [
   'lobby.state',
   'room.state', 'room.closed',
   'm.public', 'm.private', 'm.field', 'm.toast', 'm.ticker', 'm.emote', 'm.result',
-  // Post-v1 JSON fallback; repeated in welcome.emergency and match public freeze extensions.
+  // m.layer { playerId, bondId, add } — own live prep layer gain; ephemeral, never replayed on resync.
+  'm.layer',
+  // Capacity-branch additions. All three use v1's readable JSON fallback; the emergency flag is repeated in
+  // welcome.emergency and in the match public freeze extensions.
   'm.emergency',
   'm.chat', 'm.chatState', // bounded ephemeral history; new types use v1's readable JSON fallback
   // m.unitStats { seq, round, units: [unitStatsEntry] } — the answer to g.unitStats (the requester only)

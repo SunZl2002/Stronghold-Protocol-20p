@@ -207,8 +207,9 @@ export function collectViolations(m, { limit = 25 } = {}) {
     for (const [base, n] of held) if (!pool.has(base) && n !== 0) fail(`non-pool chess ${id}/${base} holds ${n} copies`);
   }
 
-  // Shared shop equipment. Fixed SERVER_GAIN_EQUIP identities may be granted after the cap and therefore may have
-  // held > cap; every other item must still conserve its stock. The marker is deliberately not used for accounting.
+  // Shared shop equipment, conserved per fixed pool group. Fixed SERVER_GAIN_EQUIP identities may be granted after
+  // the cap and therefore may have held > cap; every other item must still conserve its stock. The marker is
+  // deliberately not used for accounting.
   for (const group of m.poolGroups) {
     const stock = group.itemPool;
     if (!stock || !gd.raw.items) continue;
@@ -217,7 +218,7 @@ export function collectViolations(m, { limit = 25 } = {}) {
       const cap = stock.cap(id);
       if (!Number.isInteger(cap)) continue;
       const h = stock.held(id);
-      if (h > cap && !gd.isTraitFixedItem(id)) fail(`item group ${group.id}/${id}: held ${h} > cap ${cap}`);
+      if (h > cap && !gd.isUnlimitedGiftItem(id)) fail(`item group ${group.id}/${id}: held ${h} > cap ${cap}`);
     }
   }
 

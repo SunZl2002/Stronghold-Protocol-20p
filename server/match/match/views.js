@@ -86,6 +86,7 @@ export class MatchViews {
       hiddenBossId: this.hiddenBossId,
       bossRound: this.gd.bossRound,
       hiddenRound: this.gd.hiddenRound,
+      bossPairs: this.bossWaves ? this.bossWaves.map(w => w.players.slice()) : this.bossPairs ? this.bossPairs.map(ids => ids.slice()) : null,
       spRound: this.gd.spRounds().includes(this.round),
       playerCount: this.order.length,
       poolGroups: this.poolGroups.map(({ id, playerIds, scale }) => ({ id, playerIds: playerIds.slice(), scale })),
@@ -163,7 +164,9 @@ export class MatchViews {
           turnSeconds: g.turnSeconds || 0, untimed: !!g.untimed, done: !!g.done,
         })),
         family: s.family, name: s.name, desc: s.desc, eventId: s.eventId,
-        cards: s.cards.map(c => ({ ...cardView(c), soldOut: c.kind === 'item' && !this.itemPool.canGain(c.id) })), order: s.order.slice(),
+        // Capacity branch: item stock is per fixed pool group, so the flat `sp` fallback reads its own group's pool
+        // (upstream read the single global `itemPool` here; Match no longer owns one).
+        cards: s.cards.map(c => ({ ...cardView(c), soldOut: c.kind === 'item' && !this.itemPoolFor(s.playerIds[0]).canGain(c.id) })), order: s.order.slice(),
         turn: this.spTurn(), picks: { ...s.picks }, taken: { ...s.taken }, untimed: !!s.untimed,
         turnDeadline: s.turnDeadline || 0, turnSeconds: s.turnSeconds || 0,
       };
@@ -276,7 +279,7 @@ export class MatchViews {
    * battleStart, so the prep view always uses the reserve medic, regardless of the current elite count. The stage's
    * normal-board slot is transformed to the correct half of a boss field by _onBossHalf / the client prep camera. */
   prepMapChars(ps) {
-    if (!ps?.alive || this.phase !== PHASE.PREP || !this.order.some((p) => p.alive && p.bandId === 'band_amedic')) return [];
+    if (!ps?.alive || this.phase !== PHASE.PREP || !this.teamMedicGranted()) return [];
     const id = 'char_605_cmedic';
     const slot = this.stage?.mapChars?.find((m) => m?.key === id && Array.isArray(m.pos) && m.pos[0] >= 9 && m.pos[0] <= 12
       && m.pos[1] >= 0 && m.pos[1] <= 10 && !/multi_only/.test(String(m.alias)));

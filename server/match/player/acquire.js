@@ -215,8 +215,11 @@ export class PlayerAcquire {
    * copy-weighted roll from the shared pool excluding the ones already drawn; a tier left without another chess tops
    * up from the tier below (user playtest #6 item 19: the official promotion reward never offers one operator twice —
    * the user's first-hand report; the normal shop's slots may repeat). The offer reserves no copies (the pick takes one).
-   * The player's slotted 自选 pieces join the draw like in its shop (player/diy.js diyRollEntries: once the 调度中心 is at
-   * the slot's level) — the reward is a temporary refresh of the shop ("临时刷新3名…干员") [ASSUMED].
+   * The player's slotted 自选 pieces of the reward tier join the draw (player/diy.js diyStockEntries: copies left, then
+   * the roll's tier — not the ordinary shop's shopLevel gate). 卫戍协议/帮助 干员晋升 names one temporary refresh one tier
+   * above the 调度中心 and no separate pool; the owner decided on 2026-10-12 that the refresh includes 自选 of the newly
+   * reached tier. 0.2.0 had [ASSUMED] the shop-level gate on this refresh too (DESIGN §25); §30.23 reverses that.
+   * An offer built from explicit `ids` does not roll.
    */
   pushRewardOffer(source = 'merge', { tier = null, ids = null, label = null } = {}) {
     const ro = this.gd.rewardOffer();
@@ -228,6 +231,9 @@ export class PlayerAcquire {
       const fresh = (id) => !list.includes(id);
       for (let i = 0; i < ro.count; i++) {
         let id = null;
+        // Capacity branch: the player's own 自选 slots join their copy-weighted shop rolls. `diyStockEntries` is the
+        // upstream name for the same stock list and is kept on the prototype (player/diy.js) for callers that use it;
+        // here the per-player roll variant is the correct one under grouped private stock.
         for (let tt = t; tt >= 1 && !id; tt--) id = this.pool.roll(this.m.rngShop, { tier: tt, filter: fresh, extra: this.diyRollEntries() });
         if (id) list.push(id);
       }
@@ -285,17 +291,23 @@ export class PlayerAcquire {
    * already equipped is taken off for the fight about to start. Hand and temp both full keeps the 「整备区已满，获得的装备已销毁」
    * outcome. [ASSUMED] every item granted at 休整期结束, not only 维多利亚's 战栗维式重锤 (owner's decision 2026-10-04).
    */
-  acquireItem(itemId, { source = 'grant', toTemp = false, silent = false, deferMerge = false, noPool = false } = {}) {
+  acquireItem(itemId, { source = 'grant', toTemp = false, silent = false, deferMerge = false, requirePool = true, noPool = false } = {}) {
     const rec = this.gd.item(itemId);
     if (!rec) return null;
-    // `noPool` is only a source marker; identity decides whether the stock gate may be bypassed. All owned pieces,
-    // including exempt trait grants, are still counted by SharedItemPool.held().
-    const exempt = noPool === true && this.gd.isTraitFixedItem(itemId);
-    if (!exempt && !this.m.itemPoolFor(this).canGain(itemId)) {
+    // Two names from two sides of the merge, one rule. Upstream v0.2.5 passes `requirePool: false` from a fixed
+    // SERVER_GAIN_EQUIP garrison (`isUnlimitedGiftItem`, #488); the capacity branch passed `noPool: true` for the
+    // same identities (`isTraitFixedItem`) and additionally marked the granted piece so a merge keeps the identity.
+    // Only the fixed operator-gift families can overdraw; several unrelated strategy grants also pass
+    // requirePool:false and must retain their stock limit (for example commercial packaging).
+    const fixedGift = this.gd.isUnlimitedGiftItem(itemId);
+    const unlimitedGift = fixedGift && (requirePool === false || noPool === true);
+    if (!unlimitedGift && !this.m.itemPoolFor(this).canGain(itemId)) {
       this.m.toast(this, 'warn', '装备库存不足，未获得该装备');
       return null;
     }
-    let piece = this.newPiece('item', itemId, exempt ? { noPool: true } : {});
+    // The piece marker is the capacity branch's `noPool` source tag; it only travels onto the piece so an upgrade or
+    // merge keeps the identity. Ownership is still counted by SharedItemPool.held() either way.
+    let piece = this.newPiece('item', itemId, noPool === true && fixedGift ? { noPool: true } : {});
     // A prep-end grant may sit beside an identical copy until the next prep; the deferred marker only postpones the
     // merge and does not change shared-stock accounting.
     if (deferMerge) piece.deferMerge = true;

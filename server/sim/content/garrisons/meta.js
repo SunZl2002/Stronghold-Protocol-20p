@@ -239,8 +239,9 @@ H.SERVER_GAIN_EQUIP = {
   run(ctx) {
     const { bb, bbStr } = ctx.source;
     if (!ctx.gd.item(bbStr.chess)) return;
-    const noPool = ctx.gd.isTraitFixedItem(bbStr.chess);
-    for (let i = 0; i < Math.min(10, num(bb.count, 1)); i++) ctx.grantItem(bbStr.chess, { noPool });
+    // A fixed trait gift may exceed the shared item stock (#488, upstream v0.2.5): acquireItem only honours
+    // `requirePool: false` for the SERVER_GAIN_EQUIP identities themselves, so an unrelated item keeps its cap.
+    for (let i = 0; i < Math.min(10, num(bb.count, 1)); i++) ctx.grantItem(bbStr.chess, { requirePool: false });
   },
 };
 
