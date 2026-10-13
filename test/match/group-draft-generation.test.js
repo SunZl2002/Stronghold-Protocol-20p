@@ -201,5 +201,10 @@ test('a single available supply item remains six separate cards in each independ
 test('no group is silently omitted when card data cannot generate any reward', () => {
   const gd = forcedData('supply', 3);
   gd.shopItemsByTier = {};
-  assert.equal(generateGroupDrafts(gd, createRng(3), 3, GROUPS, OPTIONS), null);
+  // An empty list, not null: generateGroupDrafts returns the pages it built (the zero-group case above is [] too),
+  // and the caller guards on `!pages.length` (match/spDraft.js enterSpDraft falls back to prep). Asserting the
+  // count keeps the guarantee the test is named for — no group quietly gets a page it cannot fill.
+  const pages = generateGroupDrafts(gd, createRng(3), 3, GROUPS, OPTIONS);
+  assert.deepEqual(pages, []);
+  assert.equal(pages.length, 0, 'no group is silently omitted');
 });
