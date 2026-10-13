@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  FOLDER, REFUSE, RUNTIME_RESEARCH, entryProblems, isRefused, packageOutIsUnsafe, plan, playerPackageJson,
+  FOLDER, PLAYER_NPM_SCRIPTS, REFUSE, RUNTIME_RESEARCH, entryProblems, isRefused, packageOutIsUnsafe, plan, playerPackageJson,
   rewritePlayerDoc, resolveSpecifier, scanFiles, selectTracked,
 } from '../tools/package.mjs';
 
@@ -336,7 +336,13 @@ test('the stage drops dishonest npm scripts and rewrites unshipped doc links', {
     assert.equal(r.status, 0, r.stdout + r.stderr);
     const stage = path.join(out, `${FOLDER}-v9.9.9-lite`, FOLDER);
     const stagedPkg = JSON.parse(fs.readFileSync(path.join(stage, 'package.json'), 'utf8'));
-    assert.deepEqual(Object.keys(stagedPkg.scripts).sort(), ['assets', 'doctor', 'launch', 'postinstall', 'setup', 'start', 'vendor']);
+    // Derive the expectation from the checkout's own package.json and the shipped allowlist instead of a hand-copied
+    // literal: the capacity branch added assets:pack, which a literal could not know about. `start` is documented
+    // here as shipped even though the allowlist does not list it (playerPackageJson always keeps the entry point).
+    const sourceScripts = Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).scripts);
+    const expectedScripts = sourceScripts.filter((s) => s === 'start' || PLAYER_NPM_SCRIPTS.includes(s)).sort();
+    assert.ok(expectedScripts.includes('start'), 'the entry point ships');
+    assert.deepEqual(Object.keys(stagedPkg.scripts).sort(), expectedScripts);
     assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).scripts.test, 'node --test');
     const host = 'https://github.com/sganggs/Stronghold-Protocol';
     const got = fs.readFileSync(path.join(stage, 'README.md'), 'utf8');
