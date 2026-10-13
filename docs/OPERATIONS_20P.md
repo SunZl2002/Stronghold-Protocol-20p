@@ -5,9 +5,9 @@
 
 - 上游原版：<https://github.com/sganggs/Stronghold-Protocol>（本仓库的第二个远程 `upstream`）
 - 20 人版原始仓库：<https://github.com/LongQianChen/Stronghold-Protocol>（远程 `origin`）
-- 20 人玩法规则：见 [docs/PLAYER_CAPACITY.md](docs/PLAYER_CAPACITY.md)、[docs/development/DECISIONS.md](docs/development/DECISIONS.md)
-- **跟随原版更新怎么做**：见 [docs/development/SYNC_20P.md](docs/development/SYNC_20P.md)
-- 原版的通用部署说明（整合包 / 源码 / 反代）：见 [docs/DEPLOY.md](docs/DEPLOY.md)
+- 20 人玩法规则：见 [docs/PLAYER_CAPACITY.md](PLAYER_CAPACITY.md)、[docs/development/DECISIONS.md](development/DECISIONS.md)
+- **跟随原版更新怎么做**：见 [docs/development/SYNC_20P.md](development/SYNC_20P.md)
+- 原版的通用部署说明（整合包 / 源码 / 反代）：见 [docs/DEPLOY.md](DEPLOY.md)
 
 ---
 
@@ -256,7 +256,7 @@ node tools/announcements.mjs notify maintenance
 1. **上线后让所有玩家刷新一次页面**，之后内容寻址缓存生效，二次访问正文 0 B。
    协议按物理连接独立协商，旧页面不会自动降级，只会一直用大报文。
 2. **素材别从服务器拉**：`node tools/asset-cache-pack.mjs` 生成完整/增量 ZIP，走网盘或群分发
-   （服主说明见 [docs/ASSET_CACHE.md](docs/ASSET_CACHE.md)）。
+   （服主说明见 [docs/ASSET_CACHE.md](ASSET_CACHE.md)）。
    **预缓存需要 HTTPS 或 localhost**，纯 HTTP 的远程玩家用不了 Service Worker。
 3. **给对局留余量**：`node tools/server-settings.mjs asset-cache-limit 4 2`。
    该项**只限素材补齐/目录下载**，普通游戏 HTTP 与 WebSocket 不排队。
@@ -313,7 +313,7 @@ GOLDEN_FULL=1 node --test test/golden.test.js     # 全量语料，约 20 s
 服主开了 `asset-cache required`。让玩家在"预缓存"里导入完整素材包并补齐，或改回 `optional`。
 
 **Q：改成 20 人房但只有 4 个人，内容会不会按 20 人生成？**
-不会。玩法规模按**开局实际占用席位数**计算，空位和观战者不计入。见 [docs/PLAYER_CAPACITY.md](docs/PLAYER_CAPACITY.md)。
+不会。玩法规模按**开局实际占用席位数**计算，空位和观战者不计入。见 [docs/PLAYER_CAPACITY.md](PLAYER_CAPACITY.md)。
 
 **Q：我需要改观战席上限 / 其他容量档位吗？**
 `MAX_SPECTATORS`（默认 2）与 `ROOM_CAPACITIES`（4/8/10/16/20）在 `shared/constants.js`。
