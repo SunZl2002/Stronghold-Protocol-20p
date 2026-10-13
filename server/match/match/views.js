@@ -164,9 +164,10 @@ export class MatchViews {
           turnSeconds: g.turnSeconds || 0, untimed: !!g.untimed, done: !!g.done,
         })),
         family: s.family, name: s.name, desc: s.desc, eventId: s.eventId,
-        // Capacity branch: item stock is per fixed pool group, so the flat `sp` fallback reads its own group's pool
-        // (upstream read the single global `itemPool` here; Match no longer owns one).
-        cards: s.cards.map(c => ({ ...cardView(c), soldOut: c.kind === 'item' && !this.itemPoolFor(s.playerIds[0]).canGain(c.id) })), order: s.order.slice(),
+        // Capacity branch: item stock is per fixed pool group. The flat `sp` shape is the single-group case (the
+        // grouped pages above are the multi-group one) and carries no `playerIds`, so it reads group 1's pool through
+        // the compatibility getter — equivalent to the global pool upstream read here.
+        cards: s.cards.map(c => ({ ...cardView(c), soldOut: c.kind === 'item' && !this.itemPoolFor(s.playerIds?.[0]).canGain(c.id) })), order: s.order.slice(),
         turn: this.spTurn(), picks: { ...s.picks }, taken: { ...s.taken }, untimed: !!s.untimed,
         turnDeadline: s.turnDeadline || 0, turnSeconds: s.turnSeconds || 0,
       };
