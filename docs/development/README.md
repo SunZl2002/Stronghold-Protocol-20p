@@ -83,7 +83,7 @@
 | I003 | 本地已补齐；服务器待部署 | [DEV-20261009-04](records/2026-10-09-04-local-token-assets.md) 已从作者 v0.2.2 整合包补齐全部 39 套特殊召唤物；117 个素材文件及配套清单 SHA-256 通过，1598 项引用存在且非空。已准备 1.627 MiB 服务器补丁及校验工具，用户部署后复核；素材被 Git 忽略，推送源码不会上传。原缺项来源见 [原记录](records/2026-10-08-02-upstream-v0.2.1.md)。 |
 | I004 | 本地目录、生命周期与准入完成；服务器部署待验证 | [DEV-20261010-12](records/2026-10-10-12-offline-catalog-admission.md) 完成本地目录及四入口严格准入；[DEV-20261011-02](records/2026-10-11-02-manual-catalog-update.md) 新增显式旧目录更新和完整增量目录；本次允许冷浏览器用户明确获取目录后在线补齐，普通检查 / 校验仍不下载目录。在线目录与文件补齐默认不限速，服主可用 CLI 设置预算；旧目录更新保留 30 秒/IP 冷却。服务器生产完整度 / HTTPS / 百人带宽仍需部署后核验。 |
 | I005 | 紧急保护本地完成；生产触发待校准 | [DEV-20261012-03](records/2026-10-12-03-bandwidth-emergency-toggle.md) 保留网卡出口/需求/背压佐证、下载和新访问熔断、对局冻结；自动检测默认关闭，服主可用 CLI 运行时开关，开启后每 60 秒试恢复。待部署后检查默认网卡、真实出口、独立网络识别、lastTrigger 触发证据/误报，以及反代是否绕过 Node；不能用 Windows 模拟代替阿里云验证。 |
-| I006 | 素材已下载（131/174），**界面接线未做** | 商店卡片按所选皮肤显示立绘。立绘已下到 `public/assets/char/skin_portrait/`（131 张 / 15.9 MB，尺寸 180×360，与干员原皮立绘一致，因此**不需要改 CSS**）；`tools/inject-skins-assets.mjs` 已改成「文件在磁盘上才写 `skins[].portrait`」。**还差三步**：① 跑 `node tools/inject-skins-assets.mjs`（现在清单里 portrait 仍是 0/174）；② `public/js/ui/assetUrls.js` 加一个纯函数按 `skinId` 解析立绘，`public/js/ui/shopBar.js` 的 `ChessCard` 用它（选择从 `skinFor(chessId)` 读，商店全在客户端，**不需要改协议**）；③ 并入 `setup` 与 `npm run assets:skins`。上游没有立绘的 43 款回退原皮立绘。依据：本次皮肤集成的工作记录与 `docs/SKINS.md`。 |
+| I006 | 素材已下载（131/174），**界面接线未做** | 商店卡片按所选皮肤显示立绘。立绘已下到 `public/assets/char/skin_portrait/`（131 张 / 15.9 MB，尺寸 180×360，与干员原皮立绘一致，因此**不需要改 CSS**）；`tools/inject-skins-assets.mjs` 已改成「文件在磁盘上才写 `skins[].portrait`」。**还差三步**：① 跑 `node tools/inject-skins-assets.mjs`（现在清单里 portrait 仍是 0/174）；② `public/js/ui/assetUrls.js` 加一个纯函数按 `skinId` 解析立绘，`public/js/ui/shopBar.js` 的 `ChessCard` 用它（选择从 `skinFor(chessId)` 读，商店全在客户端，**不需要改协议**）；③ 并入 `setup` 与 `npm run assets:skins`。上游没有立绘的 43 款回退原皮立绘。依据：本次皮肤集成的工作记录与 `docs/SKINS.md`；取图的仓库见下方[相关仓库](#相关仓库)（fexli/ArknightsResource 的 `charpor/`）。 |
 | I007 | 待写 | 立绘接线完成后补 **D038** 决策记录（商店卡片按皮肤显示立绘；以及为何选择「只在商店生效」）。依据见 I006。 |
 | I008 | 待决定 | `docs/SKINS.md` 描述的 `tools/install-skins.mjs` 与 `server/skinInstall.js`（按需安装队列）**在皮肤来源仓库的任何分支上都不存在**，实际是全量内置。需要二选一：补实现，或把文档改成与代码一致。当前**没有**照文档实现不存在的东西。 |
 | I009 | 待决定 | 皮肤显示是否铺开到商店以外的界面：详情卡、手牌、临时整备区、准备区（`assetUrls.js` 的调用方共 5 处）。本次按用户要求**只做商店卡片**。 |
@@ -91,6 +91,46 @@
 | I011 | 待决定 | 版本与发布：`APP_VERSION` 仍是 `0.2.6`，皮肤写在 CHANGELOG 的「未发布」段。是否切 0.2.7、是否打标签，以及皮肤素材（约 206 MB：模型 190 MB + 立绘 15.9 MB）是否改走 `packs/` 或预缓存分发。 |
 
 新增待办使用递增编号；完成或取消时写明结论并链接任务记录。开发进度、验证结果和线上部署状态分别记录，避免用一个「完成」混淆三者。
+
+## 相关仓库
+
+做上面这些待办（尤其 I006、I008、I011）会用到的仓库，**均已核实存在**（2026-10-14 查 GitHub API）。
+
+**一句话版**：皮肤模型和立绘从 **fexli** 拿，皮肤头像从 **yuanyan3060** 拿，皮肤**代码**从 **Paper-Yuan** 拿，
+上游版本从 **sganggs** 合，代码推到 **SunZl2002**。
+
+| 仓库 | 拿它做什么 | 从哪个路径拿 / 放到哪 |
+|---|---|---|
+| [**fexli/ArknightsResource**](https://github.com/fexli/ArknightsResource) | **拿皮肤素材（模型 + 立绘）**。174 条模型 URL 全部指向它 | `spine/<charId>/<stem>/{Front,Back}/` → **皮肤模型** → `public/assets/spine/op/<charId>/<stem>/`（`tools/fetch-skin-spines.mjs`）<br>`charpor/<stem>.png` → **皮肤立绘 180×360** → `public/assets/char/skin_portrait/`（`tools/fetch-skin-portraits.mjs`，**I006 用的就是这个**） |
+| [**yuanyan3060/ArknightsGameResource**](https://github.com/yuanyan3060/ArknightsGameResource) | **拿皮肤头像**。174 条头像 URL 全部指向它 | `avatar/<stem>%23N.png` → `public/assets/char/skin_avatar/`（`tools/fetch-skin-avatars.mjs`） |
+| [**Paper-Yuan/Stronghold-Protocol**](https://github.com/Paper-Yuan/Stronghold-Protocol) | **拿皮肤功能的代码**（不是素材）。皮肤是按它 `docs/SKINS.md` 的锚点重放到本分支的；174 张头像也来自它的提交 `0d155d8` | 读它的 `public/js/ui/skins.js`、`ui/skinPicker.js`、`tools/*skin*` 等；**不要 merge 它的历史**（基于 0.1.x，分叉点在 1208 个提交前） |
+| [**sganggs/Stronghold-Protocol**](https://github.com/sganggs/Stronghold-Protocol) | **合上游版本**。作者原仓库，默认分支 `master` | 按 [UPSTREAM.md](UPSTREAM.md) 合并；**每次合完必须保留 D036 的 `WS_COMPRESSION`** |
+| [**SunZl2002/Stronghold-Protocol-20p**](https://github.com/SunZl2002/Stronghold-Protocol-20p) | **本分支的 fork（`origin`）**，默认分支 `capacity-20p` | 所有提交推到这里；标签 `v0.2.6-20p` 故意不随后续提交移动 |
+| [LongQianChen/Stronghold-Protocol](https://github.com/LongQianChen/Stronghold-Protocol) | 本目录（开发记录）所属的 fork，仅供参考 | **注意**：本仓库的 `upstream` remote 指向的是下面「本地路径」里那个**上游作者克隆**，不是它 |
+
+**素材只从两个仓库拿**（可核对 `docs/research/08-skins.json`：174 条模型 URL 全属 `fexli/ArknightsResource`、
+174 条头像 URL 全属 `yuanyan3060/ArknightsGameResource`）。Stronghold 系的三个仓库里**没有皮肤素材**，只有代码。
+
+| 本地素材目录 | 文件数 | 体积 | 来源 |
+|---|---|---|---|
+| `public/assets/spine/op/` | 2275 | 356.5 MB | 干员原皮 + 皮肤模型（后者来自 fexli，340 个文件 / 164.2 MB） |
+| `public/assets/char/skin_avatar/` | 174 | 10.3 MB | yuanyan3060 |
+| `public/assets/char/skin_portrait/` | 131 | 15.9 MB | fexli（上游只有 131/174 款有立绘） |
+| `public/assets/char/avatar/` `char/portrait/` | 404 / 404 | 23.5 / 46.5 MB | 基础素材，随 `npm run assets` 下载 |
+
+**本地路径**（本机布局，换机需自行调整）：
+
+```
+桌面\插件\zmd\
+  Stronghold-Protocol\          # sganggs 的克隆 —— 合上游版本时从这里取（本仓库的 upstream remote 指向它）
+  20\Stronghold-Protocol-20p\   # 本分支，就是本仓库
+  skin-zmd\Stronghold-Protocol\ # Paper-Yuan 的克隆 —— 查皮肤代码和移植锚点时看它
+```
+
+**素材取用注意**：`fexli` 与 `yuanyan3060` 的脚本都优先走 jsDelivr（`cdn.jsdelivr.net/gh/<repo>@main/…`），
+并以 `raw.githubusercontent.com` 作为 fallback —— 本机实测两者都出现过 `fetch failed` / `ECONNRESET`，
+所以**脚本里两个源都留着**，中断后重跑会跳过已存在的文件（可续传）。
+`fexli` 的 `README_CN.md` 记录过它曾因 **GitHub LFS 的 1 GB 限制**而临时不可用，大量拉取时容易限流。
 
 ## 现有参考文档
 
