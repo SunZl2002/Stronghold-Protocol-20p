@@ -300,4 +300,42 @@ chess id，四条断言全红。这正好印证了「混用是静默失败点」
 
 ## 后续补充
 
-（按日期追加后续证据或链接。）
+### 2026-10-13 · 复查时发现并修掉一个静默丢失（提交 `1ff7ae8e`）
+
+收尾之后我把皮肤仓库那个提交的**完整文件清单**拉出来逐个复查（当初是靠 `docs/SKINS.md` 的锚点表移植的，
+而那张表并不完整），发现皮肤在**模拟层**断了。
+
+皮肤仓库把皮肤穿过**三个**文件；我只移植了两个：
+
+| 皮肤仓库 | 20p 对应 | 状态 |
+|---|---|---|
+| `server/match/Match.js` `setSkins` | `server/match/match/platform.js` | 已移植 |
+| `server/sim/Battle.js` `_makeAlly` 传 `skin` | `server/sim/battle/players.js` | **漏了** |
+| `server/sim/units.js` Unit 保存 `skin` | `server/sim/units.js` | **漏了** |
+
+后果：`battleInput` 确实在**普通输入对象**上写了 `u.skin`，`snapshot.js` 的 `unitInfo` 也确实读 `u.skin`
+—— 但 `unitInfo` 拿到的**永远是一个 sim 的 `Unit` 实例**，而中间两环缺失，
+所以 `_makeAlly` 没把 `skin` 传下去、`Unit` 也没有这个字段，**每个已部署干员的皮肤在战场上都静默丢失**。
+准备区、手牌、详情卡仍显示皮肤（它们走 `m.private.pieces[].skin` 那条 `pieceView` 路径），
+这正是它难以察觉的原因 —— 表面看起来是对的。
+
+修法就是补上那两环（`players.js` 转发 `extra.skin`，`units.js` 保留 `init.skin ?? null`），
+并把整条链子钉成测试（`test/skins.test.js` 的「战场单位」一例，**去掉修复就会失败**）：
+
+```
+battleInput（普通对象带 skin）
+  -> battle/players.js _createAllyFromInput -> _makeAlly({ skin: inp.skin })
+  -> sim/units.js Unit({ skin }) -> u.skin
+  -> snapshot.js unitInfo(u) -> 线上的 "skin"
+```
+
+验证：三闸门通过、`test/skins` **7/7**、`test/sim/battle` **27/27**、`test/wire-codec` 15/15、
+全量套件仍是**同样那 9 项**已归因失败（没有新增）、eslint 0 errors、真实清单端到端重跑通过。
+
+### 复查其余文件的结果（无需改动）
+
+逐块对比了皮肤仓库提交里其余可能相关的文件，`skin` 关键字在这些文件的改动里**一处都没有出现**，
+即它们与皮肤无关（属于同提交里夹带的安卓/音频/兼容性改动）：
+`public/js/render/spine.js`、`public/js/screens/game.js`、`public/js/ui/choiceOverlay.js`、
+`public/js/ui/detailPanel.js`、`public/js/ui/gameLogic.js`、`server/index.js`。
+`shared/constants.js` 在那个提交里**只改了版本号**（`APP_VERSION`），与皮肤无关。
