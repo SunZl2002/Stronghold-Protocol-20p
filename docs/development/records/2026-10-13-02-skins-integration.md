@@ -91,7 +91,7 @@ below line by line so they can be re-applied after merging an upstream release*�
 | 闸门 1 · 金标准（上游基准、**未 update**） | **9/9 通过** —— 皮肤没有动 1–4 人玩法 |
 | 闸门 2 · 20 人容量与分组库存回归 | **294/294 通过** |
 | 闸门 3 · 版本一致性 / 发布接线 | **6/6 通过** |
-| `test/skins.test.js` | **5/5 通过** |
+| `test/skins.test.js` | **6/6 通过**（含 20 席紧凑载荷契约） |
 | 相关回归（lobby / wire-codec / loadout UI 等） | **107/107 通过** |
 | `test/wire-codec.test.js` | 15/15，**v1 指纹未变** |
 | `npx eslint`（全部改动文件） | **0 errors**（7 warnings，均为改动前既有风格项） |
@@ -201,6 +201,13 @@ below line by line so they can be re-applied after merging an upstream release*�
    我**没有**照文档去实现未存在的东西；后续要么补实现、要么把文档改成与代码一致（待定）。
 5. 皮肤对 `m.public` 的载荷增量未测（20 人房 8 Hz）。空皮肤不带字段 ⇒ 无皮肤玩家零成本；
    但**全员带皮肤**时的增量应补一次测量，确认不破坏 `test/wire-pressure.test.js`（84 连接 / 0.8 Mbps）。
+   → **已补测并钉进测试**（`test/skins.test.js` 的「20 席 m.public 的皮肤载荷」一例，提交 `eab2dd5c`）：
+   - 20 席全部带皮肤，皮肤 id 与 **chess 键**都经紧凑 v1 编解码往返一致；
+   - 无皮肤的房间**逐字节等于**没有该字段时的帧（真实断言，不是目测）；
+   - 实测增量：**+1120 B / 次广播**（1581 → 2701 B）≈ 每连接 **+72 kbit/s**，
+     28 条连接（20 真人 + 8 观战）@8 Hz ≈ **+0.25 Mbit/s** —— 在 `test/wire-pressure.test.js`
+     已经覆盖的 0.8 Mbps 预算之内（该测试的单连接基线约 27 kbps，加了皮肤仍有余量）。
+   - 测试断言增量 **< 3 KB**，将来若有人把载荷写肥会立刻可见。
 6. `test/package-player.test.js` 有 **1 个既有失败**（`docs/ANNOUNCEMENTS.md` 的
    `assets/banner.png` 源链接检查）。已用 worktree 证明它**在皮肤移植之前（`e61a6398`）就以同样方式失败**，
    与本次工作无关，未修。
