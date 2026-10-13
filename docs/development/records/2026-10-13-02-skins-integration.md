@@ -9,7 +9,7 @@
 | 分支基线 | `capacity-20p` @ `e61a6398`（上游 v0.2.6 已合并、D036 已记录） |
 | 共同祖先 | `bce18270` —— 皮肤分支与本分支的**分叉点在 1208 个提交之前**（皮肤基于 0.1.x，本分支已到 0.2.6） |
 | 移植方式 | **按 `docs/SKINS.md` 的锚点逐个重放**；不 merge 那条 0.1.x 历史（会带入安卓客户端、Cloudflare Functions 等无关改动） |
-| 交付提交 | `1d6e5456`（33 文件 / +8820 −31） |
+| 交付提交 | `1d6e5456`（移植，33 文件 / +8820 −31）、`6c95470c`（记录）、`2c8cd379`（setup 集成） |
 
 ## 规模与三个来源提交
 
@@ -151,6 +151,21 @@ below line by line so they can be re-applied after merging an upstream release*�
 
 **源码合并完成 ≠ 素材更新完成。**
 
+### 皮肤素材已经接进 setup（提交 `2c8cd379`）
+
+皮肤模型（~190 MB）**不属于**基础素材下载，所以一台「基础素材已完整」的机器可能一个皮肤都没有，
+而且没有任何提示。因此把它做成了正式的 setup 步骤：
+
+- `tools/setup.mjs`：新增 `checkSkins()` 与皮肤下载阶段（排在基础素材之后），以及 `--no-skins`；
+  `--check` 只报告模型/头像数量、**不下载**。
+- `package.json`：`npm run assets:skins`（头像 + 模型 + 注入）与 `assets:skins:inject`。
+- **因为 setup 会启动这些工具，它们必须随发布包发出**：`PLAYER_TOOLS` 加入三个皮肤工具、
+  `RUNTIME_RESEARCH` 加入 `docs/research/08-skins.json`（`fetch-skin-avatars.mjs` 要读它）、
+  `PLAYER_NPM_SCRIPTS` 加入两条脚本。**这是打包守卫抓出来的**（它断言 setup 启动的每个工具都必须 ship），
+  不是我事后补的。
+- 相应更新了两个打包 fixture 与期望（保留文件数 37 → **41**）。
+- 玩家侧现在只要 `npm run setup`（或 `npm run assets:skins`）就能补齐皮肤素材。
+
 - `public/assets/**` **不进 Git**（`.gitignore:10` 的 `public/assets/` 规则），所以：
   - **174 款皮肤的骨骼模型**（约 190 MB）只在本地安装目录，**新克隆必须自己跑 `tools/fetch-skin-spines.mjs`**；
   - **174 张皮肤头像**（10.3 MB）**同样没有进本仓库的 Git**（我确认过：`git ls-files public/assets/char/skin_avatar`
@@ -170,12 +185,13 @@ below line by line so they can be re-applied after merging an upstream release*�
 
 ## 未完成事项
 
-1. **174 款骨骼的全量下载**已启动（后台），完成后必须**重跑** `tools/inject-skins-assets.mjs`，
-   否则除试点之外的皮肤只会回退到干员原皮外观（选择器有图、单位不变）。脚本可续传，中断重跑即可。
+1. **174 款骨骼的全量下载**在记录撰写时进行中（`tools/fetch-skin-spines.mjs`，已有 308/522 个模型文件）。
+   脚本对已存在文件跳过 ⇒ **可中断续传**。下载完成后**必须重跑一次注入**
+   （`npm run assets:skins:inject` 或 `node tools/inject-skins-assets.mjs`），
+   否则除试点之外的皮肤只会回退到干员原皮外观（选择器有图、单位不变）。
 2. **美术文件都不进 Git**（头像与模型都在 `public/assets/` 下并被忽略）。新机器部署后：
    皮肤目录可用、选择器可点，但**头像会回退到原皮、单位仍是原皮外观**，直到跑过
-   `tools/fetch-skin-avatars.mjs`（10 MB）与 `tools/fetch-skin-spines.mjs`（约 190 MB）。
-   建议把这两条并进部署流程（`tools/setup.mjs` 之后）；是否要改素材目录布局让头像进 Git，
+   `npm run assets:skins`（现在这条已接入 setup）。是否要改素材目录布局让头像进 Git，
    属于取舍，需要用户决定，我不擅自改。
 3. **渲染未在真实浏览器里验证**：本机没有 Chrome、也没有基础素材（`public/assets` 为空），
    所以「皮肤模型在画面上正确显示」只做到了离线骨骼/角色解析与 `spineEntry` 的单元级验证，
@@ -185,6 +201,9 @@ below line by line so they can be re-applied after merging an upstream release*�
    我**没有**照文档去实现未存在的东西；后续要么补实现、要么把文档改成与代码一致（待定）。
 5. 皮肤对 `m.public` 的载荷增量未测（20 人房 8 Hz）。空皮肤不带字段 ⇒ 无皮肤玩家零成本；
    但**全员带皮肤**时的增量应补一次测量，确认不破坏 `test/wire-pressure.test.js`（84 连接 / 0.8 Mbps）。
+6. `test/package-player.test.js` 有 **1 个既有失败**（`docs/ANNOUNCEMENTS.md` 的
+   `assets/banner.png` 源链接检查）。已用 worktree 证明它**在皮肤移植之前（`e61a6398`）就以同样方式失败**，
+   与本次工作无关，未修。
 
 ## 后续补充
 
