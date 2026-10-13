@@ -1,0 +1,191 @@
+# 2026-10-13 · 干员皮肤：把 fexli/ArknightsResource 的皮肤素材集成到 20 人版
+
+## 目标与基线
+
+| 项目 | 值 |
+|---|---|
+| 需求 | 把上游皮肤素材（`fexli/ArknightsResource`，`main`，`spine/` 根路径）集成到 20 人版 |
+| 实现来源 | `Paper-Yuan/Stronghold-Protocol`（本地 `skin-zmd/Stronghold-Protocol`）的皮肤提交 `53d9e350`（实现）+ `0d155d8`（174 张头像） |
+| 分支基线 | `capacity-20p` @ `e61a6398`（上游 v0.2.6 已合并、D036 已记录） |
+| 共同祖先 | `bce18270` —— 皮肤分支与本分支的**分叉点在 1208 个提交之前**（皮肤基于 0.1.x，本分支已到 0.2.6） |
+| 移植方式 | **按 `docs/SKINS.md` 的锚点逐个重放**；不 merge 那条 0.1.x 历史（会带入安卓客户端、Cloudflare Functions 等无关改动） |
+| 交付提交 | `1d6e5456`（33 文件 / +8820 −31） |
+
+## 规模与三个来源提交
+
+| 提交 | 内容 | 处置 |
+|---|---|---|
+| `53d9e350` | **实现主体**：174 款皮肤、头像、调配面板皮肤页、协议/服务端/渲染全链路 | 按锚点重放到 0.2.6 |
+| `0d155d8` | 只加 174 张皮肤头像 PNG（10.3 MB） | 直接取文件 → `public/assets/char/skin_avatar/` |
+| `4eda786` | 只改 Cloudflare `functions/assets/[[path]].js` | **与 20 人版无关，跳过** |
+
+`docs/SKINS.md` 本身就是为「上游发版后重新应用」写的（原话：*the handful of edits to existing ones are listed
+below line by line so they can be re-applied after merging an upstream release*）。我核对了它列的 **12 组锚点，
+在 0.2.6 上全部还在** —— 但**只有 12 个文件级锚点，实际有 15 个既有文件需要改**：文档漏了
+`public/js/ui/loadoutModel.js`（皮肤要参与调配的导出/导入），以及 20p 重构后 `renderInfo` 搬到了 `render/app/info.js`。
+
+## 改动清单（最终 33 文件）
+
+### 新增（11 个文件 + 174 张头像）
+
+| 文件 | 作用 |
+|---|---|
+| `data/skins.json` | 客户端读的皮肤目录（`chars` → 115 干员 / 174 款，**不含 URL**） |
+| `docs/research/08-skins.json` | 静态研究表（含 fexli / Kengxxiao / yuanyan3060 三个来源的 URL） |
+| `public/js/ui/skins.js` | 皮肤状态 + `room.skins` 同步（对齐 `ui/loadoutSync.js`） |
+| `public/js/ui/skinPicker.js` | 「干员调配」里的皮肤页（自包含） |
+| `docs/SKINS.md` | 功能与移植文档 |
+| `tools/fetch-skin-spines.mjs` | 从 jsDelivr 拉皮肤骨骼（1044 个文件；**已存在则跳过 ⇒ 可续传**） |
+| `tools/fetch-skin-avatars.mjs` | 拉皮肤头像 |
+| `tools/inject-skins-assets.mjs` | 把已落地的皮肤写入 `data/assets.json` |
+| `tools/build-skins.mjs` | 研究表 → `data/skins.json` |
+| `test/skins.test.js` | 皮肤查找 / 校验 / 导入导出 |
+| `data/skins-installed.json` | 已装皮肤清单（当前 174 条 = 全量内置） |
+
+跳过了皮肤仓库里与皮肤无关的附带文件（`android/**`、`release_notes_*`、`docs/LAUNCHER-COMPAT.md`、
+`docs/START-MODES-PLAN.md`、`SKINS-BUILTIN-PLAN.md`、`tools/fetch-bilingual-voices.mjs`）。
+
+### 既有文件（15 个）
+
+| 文件 | 改什么 |
+|---|---|
+| `shared/protocol.js` | `SKIN_LIMITS` / `isSkinId` / `isSkinSelection`；C2S 加 `room.skins` |
+| `server/net.js` | `Session.skins`；`HEAVY_TYPES` 加 `room.skins` |
+| `server/lobby.js` | `freezeSkins()`；`room.skins` 分发与处理器；session → seat → `new Match()` 传参 |
+| `server/match/PlayerState.js` | 构造器读 `seat.skins` |
+| `server/match/player/basics.js` | `setSkins()`（与 `setLoadout` 同一道门） |
+| `server/match/player/round.js` | `battleInput()` 给 `u.skin` |
+| `server/match/player/views.js` | `pieceView()` 带 `skin` |
+| `server/match/match/platform.js` | `Match.setSkins()`（**无阶段门**，`markPublic`） |
+| `server/match/match/views.js` | `publicView().players[]` 带 `skins`（**空则不带**） |
+| `server/sim/snapshot.js` | `unitInfo()` 加 `skin: u.skin ?? undefined` |
+| `public/js/assets.js` | `spineEntry` / `avatarUrl` / `hasBackSpine` 支持 `opts.skin` |
+| `public/js/render/units.js` | `_loadSpine` / `_loadPicture` / `_wantsBack` 传 `skin` |
+| `public/js/render/app/info.js` | `renderInfo()` 加 `info.skin` |
+| `public/js/render/app.js` | `pieceInfo()` 解析皮肤 + `sig` 含 `skin` |
+| `public/js/screens/loadout.js` | import + `<${SkinSection} chess=${chess} />`（两行） |
+| `public/js/data.js` / `ui/gameComponents.js` | `DATA_FILES` / `GAME_FILES` 登记 `skins` |
+| `public/js/ui/loadoutModel.js` | `sanitizeSkins` / `mergeSkins`；`exportPayload` / `parseImport` 带 `skins` |
+| `public/css/screens/loadout.css` | `.lo-skin*` 样式（99 行，只取皮肤块） |
+
+## 关键判断与取舍
+
+1. **只取皮肤相关的改动。** `53d9e350` 把皮肤与一批 0.1.x 的无关改动（安卓黑屏修复、触摸方向轮、
+   攻击目标追踪 `lastTargetId` / `finishAttack`、初始部署不播特效、`Img` 的 `loading` 属性）混在同一提交里。
+   我逐块甄别，**只重放皮肤部分**；上面那些一律不带。
+2. **`unitInfo` 必须是 `undefined` 而不是 `null`。** `JSON.stringify` 会丢掉 `undefined`，
+   所以没穿皮肤的单位**逐字节等于改动前**，DESIGN §8.2 的线格式契约与 v1 指纹都不受影响。
+3. **`m.public.players[].skins` 空则不带**：20 人房 8 Hz 广播下，没皮肤的玩家不产生任何额外载荷。
+4. **皮肤选择按 chess id 存，目录与清单按 operator id 存**（`docs/SKINS.md` 点名的静默失败点：
+   混用会让选择器空白、`setSkins` 丢掉所有条目）。我因此把 `char_199_yak`（operator）与
+   `chess_char_1_02_a`（chess）在验证里明确区分开。
+5. **协议走 JSON 回退，不动 v1 位置表**（D021）：`test/wire-codec.test.js` 的 `V1_JSON_FALLBACK.c2s`
+   加上 `room.skins`，指纹 `ea41ddd2…` 未变。
+6. **注入脚本沿用干员原皮的动作数据**（`anims`/`animations`/`hits`/`bounds`），不走
+   `tools/assets/spine.mjs` 的离线管线。这是它最可疑的假设，所以我**先离线验证再批量**（见下）。
+
+## 验证结果
+
+| 项目 | 结果 |
+|---|---|
+| 闸门 1 · 金标准（上游基准、**未 update**） | **9/9 通过** —— 皮肤没有动 1–4 人玩法 |
+| 闸门 2 · 20 人容量与分组库存回归 | **294/294 通过** |
+| 闸门 3 · 版本一致性 / 发布接线 | **6/6 通过** |
+| `test/skins.test.js` | **5/5 通过** |
+| 相关回归（lobby / wire-codec / loadout UI 等） | **107/107 通过** |
+| `test/wire-codec.test.js` | 15/15，**v1 指纹未变** |
+| `npx eslint`（全部改动文件） | **0 errors**（7 warnings，均为改动前既有风格项） |
+| `node tools/check-imports.mjs` | 3 个既有 note，**0 新增违规** |
+
+### 一、离线验证「皮肤骨骼能与原皮共用动作数据」（批量前的关键闸门）
+
+用 20 人版自己的骨骼解析器（`tools/assets/skel.mjs`，即客户端同款 `@pixi-spine/runtime-3.8`）+
+`resolveRoles()` 对 **4 款皮肤 / 8 个模型**（原皮与皮肤各一）做对照：
+
+| 干员 / 皮肤 | 原皮动画 | 皮肤动画 | 解析出的角色 | 缺失图集区域 |
+|---|---|---|---|---|
+| `char_199_yak` / `_summer_1` | Attack, Default, Die, Idle, Start | **完全相同** | **完全相同** | 无 |
+| `char_102_texas` / `_winter_1` | Attack_End/Loop/Start, Default, Die, Idle, Skill, Start | **完全相同** | **完全相同** | 无 |
+| `char_183_skgoat` / `_epoque_30` | Attack, Default, Die, Idle, **Skill_Begin/End/Loop**, Start | 多了一个 `Skill`（时长 0.2） | idle/deploy/attack/die **相同**；skill 循环名从 `Skill_Loop` 变 `Skill`，**但角色语义一致** | 无 |
+| `char_306_leizi` / `_game_3` | Attack, Default, Die, Idle, Start | 相同（Idle 时长 2→3） | **完全相同** | 无 |
+
+**结论**：注入脚本「沿用原皮 `anims`」的假设成立 —— `resolveRoles()` 每次都给出一致的角色解析，
+`missingRegions` 全为空（图集与骨骼配对正确），**唯一的差异是 `bounds`**（皮肤美术更大），
+而 `bounds` 本来就从原皮沿用、只影响占位框。`char_183_skgoat` 这一例还证明解析器能跨过命名差异。
+
+### 二、真实 WebSocket 端到端（起真服务器）
+
+| 断言 | 结果 |
+|---|---|
+| `room.skins` 在**等候房**被接受（返回 `ok`） | 通过 |
+| 非法 skinId 被协议层拒绝（`BAD_MSG` / `bad field skins`） | 通过 |
+| `m.public.players[].skins` 带上皮肤（**公开：队友可见**） | 通过 |
+| 没皮肤的玩家**完全不带** `skins` 字段 | 通过 |
+| **对局进行中**改皮肤同样生效（无阶段门） | 通过 |
+| 清空后 `m.public` 里该字段消失 | 通过 |
+
+> 过程中被自己的测试误导了三次，记录下来免得下次再踩：① `ok { rid }` **只在请求带 `rid` 时才回**，
+> 「没有响应」其实是成功；② 对局广播是**紧凑数组帧**，必须先过 `decodeWire(raw,'s2c')` 才能看 `m.public`；
+> ③ **值没变则不广播**（我只把同一个皮肤重发一次，服务器正确地什么都没发）。
+> 另外第一次把 `char_199_yak`（operator id）当 chess id 用，被 `freezeSkins` 正确丢弃 —— 正是文档警告的那个坑。
+
+### 三、真实注入脚本
+
+手工从 jsdelivr 落地 1 款皮肤的 Front 骨骼（skel 78718 B + atlas 8528 B；png 那次 `ECONNRESET`），
+然后跑真正的 `tools/inject-skins-assets.mjs`：
+
+```
+✔ 成功向 data/assets.json 注入 115 名干员的共 174 套皮肤资产条目。
+```
+
+- `chars['char_199_yak'].skins['char_199_yak@summer#1']` **含 `spine`**（只有它的模型在磁盘上），
+  且 `anims` 正确继承原皮。
+- 174 条**全部**带 `avatar`。
+- `stats.skins = 174`、`stats.charsWithSkins = 115`。
+- 注入后金标准仍 **9/9**。
+
+后续 `tools/fetch-skin-spines.mjs` 已在后台启动拉取全部 1044 个骨骼文件（脚本对已存在文件跳过 ⇒ 可续传），
+完成后需**重跑一次注入**，把其余 173 款的 `spine` 字段写入（见「未完成事项」）。
+
+## 素材状态
+
+**源码合并完成 ≠ 素材更新完成。**
+
+- `public/assets/**` **不进 Git**（`.gitignore:10` 的 `public/assets/` 规则），所以：
+  - **174 款皮肤的骨骼模型**（约 190 MB）只在本地安装目录，**新克隆必须自己跑 `tools/fetch-skin-spines.mjs`**；
+  - **174 张皮肤头像**（10.3 MB）**同样没有进本仓库的 Git**（我确认过：`git ls-files public/assets/char/skin_avatar`
+    为 0；皮肤仓库是把它们提交进 Git 的，但本仓库的 `.gitignore` 把整个 `public/assets/` 排除了，
+    所以那套做法在这里不生效）。它们现在**只存在于本机工作区，且不会被提交**。
+- **`data/assets.json` 进了 Git**：174 条皮肤条目 / 115 个干员的**元数据**（名称、系列、头像路径，
+  以及唯一的 1 条带 `spine` 的试点条目）已随本次提交落地，`stats.skins = 174`。
+  也就是说：**目录与选择器在任何克隆上都能工作，但美术文件需要各自补齐**。
+- `data/assets.json` 是 `tools/fetch-assets.mjs` 的**生成物**，注入会写 `chars[].skins`。
+  **以后重跑素材更新可能覆盖掉 `skins` 字段** —— 更新素材后要重跑 `tools/inject-skins-assets.mjs`。
+- 皮肤模型来源：`fexli/ArknightsResource@main`，经 `cdn.jsdelivr.net/gh/...`（原版 `raw.githubusercontent.com`
+  在大陆直连常失败；皮肤仓库自带 jsdelivr 回退，我沿用）。
+
+## 部署状态
+
+**未部署。** 仅在本地整合仓库完成移植与验证；未构建镜像、未推送远程、未重启任何服务器。
+
+## 未完成事项
+
+1. **174 款骨骼的全量下载**已启动（后台），完成后必须**重跑** `tools/inject-skins-assets.mjs`，
+   否则除试点之外的皮肤只会回退到干员原皮外观（选择器有图、单位不变）。脚本可续传，中断重跑即可。
+2. **美术文件都不进 Git**（头像与模型都在 `public/assets/` 下并被忽略）。新机器部署后：
+   皮肤目录可用、选择器可点，但**头像会回退到原皮、单位仍是原皮外观**，直到跑过
+   `tools/fetch-skin-avatars.mjs`（10 MB）与 `tools/fetch-skin-spines.mjs`（约 190 MB）。
+   建议把这两条并进部署流程（`tools/setup.mjs` 之后）；是否要改素材目录布局让头像进 Git，
+   属于取舍，需要用户决定，我不擅自改。
+3. **渲染未在真实浏览器里验证**：本机没有 Chrome、也没有基础素材（`public/assets` 为空），
+   所以「皮肤模型在画面上正确显示」只做到了离线骨骼/角色解析与 `spineEntry` 的单元级验证，
+   未做 `RENDER_E2E=1`。**上线前应在有素材的机器上跑一次**。
+4. `docs/SKINS.md` 描述的 `tools/install-skins.mjs` 与 `server/skinInstall.js`（按需安装队列）
+   **在皮肤仓库的三个分支上都不存在** —— 实际是「全量内置」。文档已随文件带来，但这两处描述与代码不符，
+   我**没有**照文档去实现未存在的东西；后续要么补实现、要么把文档改成与代码一致（待定）。
+5. 皮肤对 `m.public` 的载荷增量未测（20 人房 8 Hz）。空皮肤不带字段 ⇒ 无皮肤玩家零成本；
+   但**全员带皮肤**时的增量应补一次测量，确认不破坏 `test/wire-pressure.test.js`（84 连接 / 0.8 Mbps）。
+
+## 后续补充
+
+（按日期追加后续证据或链接。）
