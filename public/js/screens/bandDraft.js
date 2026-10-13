@@ -208,6 +208,10 @@ export function BandDraftScreen() {
   const myPick = draft.picks.get(myId) || priv?.bandId || null;
   const myTurn = !myPick && (solo || draft.turnPid === myId);
   const skipsLeft = draft.skipsLeft.has(myId) ? draft.skipsLeft.get(myId) : (skipped ? 0 : 1);
+  // Upstream PR #546: only offer 跳过 while another unpicked player remains. This branch narrows it further (D004):
+  // the player left to yield to must be one who can still choose manually, inside this group, so a skip never hands
+  // the turn to an AI that the group's own human-first ordering would have put last. `hasManualTeammateAfter` implies
+  // upstream's condition (that manual player is unpicked and comes later), so no case upstream fixed is reopened.
   const manualTeammateAfter = hasManualTeammateAfter(draft, players, myId);
   const canSkip = !solo && myTurn && skipsLeft > 0 && manualTeammateAfter;
   const taken = solo ? new Map() : teammateBands(draft.picks, myId);
