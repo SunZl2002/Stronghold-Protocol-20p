@@ -231,10 +231,11 @@ export class PlayerAcquire {
       const fresh = (id) => !list.includes(id);
       for (let i = 0; i < ro.count; i++) {
         let id = null;
-        // Capacity branch: the player's own 自选 slots join their copy-weighted shop rolls. `diyStockEntries` is the
-        // upstream name for the same stock list and is kept on the prototype (player/diy.js) for callers that use it;
-        // here the per-player roll variant is the correct one under grouped private stock.
-        for (let tt = t; tt >= 1 && !id; tt--) id = this.pool.roll(this.m.rngShop, { tier: tt, filter: fresh, extra: this.diyRollEntries() });
+        // The promotion reward's temporary refresh draws every slotted 自选 piece with copies left, whatever the
+        // 调度中心 level (player/diy.js diyStockEntries; upstream 0.2.5 #515). The ordinary shop uses the level-gated
+        // diyRollEntries instead. Per-player stock is unchanged by the capacity branch here: the roll still goes
+        // through this player's own `this.pool`, which under D010/D028 is their fixed group's pool.
+        for (let tt = t; tt >= 1 && !id; tt--) id = this.pool.roll(this.m.rngShop, { tier: tt, filter: fresh, extra: this.diyStockEntries() });
         if (id) list.push(id);
       }
     }
