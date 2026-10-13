@@ -35,6 +35,9 @@ export function unitInfo(u) {
     tier: d.tier ?? (d.rank === 'BOSS' ? 3 : d.rank === 'ELITE' ? 2 : 1),
     golden: !!d.golden,
     spine: d.spine ?? d.charId ?? u.defId,
+    // 干员皮肤 (docs/SKINS.md): `undefined`, NOT `null` — JSON.stringify drops it, so a unit with no skin serialises
+    // byte-identically to before and the published v1 wire contract is untouched.
+    skin: u.skin ?? undefined,
     avatar: d.avatar ?? d.charId ?? u.defId,
     x: r2(u.x),
     y: r2(u.y),

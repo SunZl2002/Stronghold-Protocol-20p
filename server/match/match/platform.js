@@ -81,6 +81,27 @@ export class MatchPlatform {
     return res;
   }
 
+  /**
+   * 干员皮肤 (docs/SKINS.md): replace a player's skin choices — `{ [chessId]: skinId }`. Unlike the loadout there is
+   * NO phase gate: a skin is cosmetic and public, so it may change at any time (the lobby accepts it in any phase too,
+   * and PlayerState.setSkins re-checks it against this match's data). Broadcasts `m.public`, because teammates see it.
+   * @param {string} playerId
+   * @param {Record<string, string> | null} skins
+   * @returns {{ ok: true } | { error: string, detail?: string }}
+   */
+  setSkins(playerId, skins) {
+    if (this.emergencyFrozen) return fail(ERR.SERVER_EMERGENCY);
+    const ps = this.players.get(playerId);
+    if (!ps || ps.isBot || ps.left) return fail(ERR.NOT_IN_ROOM);
+    if (this.disposed || this.ended) return fail(ERR.WRONG_PHASE, 'no skins after the match ended');
+    let res = OK;
+    this.guard(() => {
+      ps.setSkins(skins);
+      this.markPublic();
+    });
+    return res;
+  }
+
   onDisconnect(playerId) {
     const ps = this.players.get(playerId);
     if (!ps || ps.isBot || this.disposed) return;

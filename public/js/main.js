@@ -56,6 +56,7 @@ import { LoadoutHost } from './screens/loadout.js';
 import { StatsHost } from './screens/stats.js';
 import { recordResult, installStatsRecorder } from './ui/stats.js';
 import { installLoadoutSync, installOwnershipSync, installDiySync } from './ui/loadoutSync.js';
+import { installSkinsSync } from './ui/skins.js';
 import { startBuildGuard } from './ui/buildGuard.js';
 import { MAX_SEATS } from '../../shared/constants.js';
 import { initLang, useLang, tickerText } from './ui/lang.js';
@@ -404,6 +405,7 @@ async function boot() {
   installAssetCache();
   installStatsRecorder(store); // follows the match on screen, so a 放弃模拟 can be recorded (ui/stats.js)
   installLoadoutSync({ net });
+  installSkinsSync({ net });
   installOwnershipSync({ net });
   installDiySync({ net });
   net.attachBrowserHooks();

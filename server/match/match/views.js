@@ -118,6 +118,9 @@ export class MatchViews {
         autoplay: ps.autoplay,
         // the LP this round's own battle will cost at settlement so far (COMBAT / 联防 only, omitted when 0)
         ...this._pendingLpView(ps),
+        // 干员皮肤 (docs/SKINS.md): PUBLIC — a teammate sees your skin, which is the point of picking one. Omitted
+        // entirely when empty, so a player with no skins costs the broadcast nothing (D021 payload discipline).
+        ...(Object.keys(ps.skins).length ? { skins: ps.skins } : {}),
       })),
       fields: this.fields.map((f) => {
         const v = { fieldId: f.fieldId, kind: f.kind, players: f.players.slice(), live: !!f.live };

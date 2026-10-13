@@ -94,6 +94,19 @@ const isLoadoutEntry = (e) => isPlain(e) && Object.keys(e).length > 0 && Object.
 /** Structural check of `room.loadout.entries`. */
 export const isLoadoutEntries = (v) => isMap(v, LOADOUT_LIMITS.entries, isId, isLoadoutEntry);
 
+// ---- 干员皮肤 (docs/SKINS.md): room.skins { skins } -----------------------------------------------------------
+
+/**
+ * `room.skins { skins }`: `skins` = `{ [baseChessId]: skinId }`.
+ * Unlike `room.loadout` these are PUBLIC: they ride in `Match.publicView().players[]` so a teammate sees your
+ * skin, which is the whole point of choosing one in a co-op match.
+ */
+export const SKIN_LIMITS = Object.freeze({ entries: 160, idLen: 64 });
+/** A skinId. NOT `isId`: those allow only `[A-Za-z0-9_\-.:]`, and skin ids carry `@` and `#` (`char_002_amiya@winter#1`). */
+export const isSkinId = (v) => typeof v === 'string' && v.length > 0 && v.length <= SKIN_LIMITS.idLen && /^[A-Za-z0-9_@#+.\-]+$/.test(v);
+/** Structural check of `room.skins.skins`. */
+export const isSkinSelection = (v) => isMap(v, SKIN_LIMITS.entries, isId, isSkinId);
+
 /** Skill indexes a chess record offers (data `skills[]`, DESIGN §16; the default skill alone while data lacks it). */
 function skillIndexesOf(c) {
   if (!c || typeof c !== 'object') return [];
@@ -424,6 +437,8 @@ export const C2S = {
   // operator loadout (DESIGN §16): stored per session/seat; accepted until the match leaves INFO_CHECK — `ops` (0.2.2):
   // the per-operator 潜能 / 练度 (absent = none set: every operator at 潜能 6, 精英2 Lv.60)
   'room.loadout': { entries: isLoadoutEntries, ops: isLoadoutOps, $optional: ['ops'] },
+  // 干员皮肤 (docs/SKINS.md): public, accepted in any room phase (a skin is cosmetic and teammates are meant to see it)
+  'room.skins': { skins: isSkinSelection },
   // operator ownership (干员持有, 0.2.0 补位): stored per session / seat; a match takes the list its seat had when it
   // started (an out-of-match setting — during a match it is stored for the next one: ROOM_STARTED)
   'room.ownership': { notOwned: isNotOwnedList },
