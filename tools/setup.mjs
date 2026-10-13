@@ -205,6 +205,36 @@ export function checkAssets() {
 }
 
 /**
+ * 干员皮肤 (docs/SKINS.md): are the optional skin models on disk? The catalogue (data/skins.json) and the 174
+ * avatars are small; the Spine models are the bulk (~190 MB) and are fetched separately, so report them on their own
+ * rather than folding them into checkAssets (which would make a machine with the base art look "incomplete").
+ * @returns {{ catalogued: number, models: number, bytes: number, avatars: number }}
+ */
+export function checkSkins() {
+  const root = path.join(ROOT, 'public', 'assets', 'spine', 'op');
+  let models = 0, bytes = 0;
+  const walk = (d) => {
+    let ents;
+    try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith('.skel')) {
+        models++;
+        try { bytes += fs.statSync(p).size; } catch { /* raced */ }
+      }
+    }
+  };
+  walk(root);
+  let catalogued = 0;
+  const cat = readJson(path.join(ROOT, 'data', 'skins.json'));
+  if (cat && cat.chars) for (const list of Object.values(cat.chars)) catalogued += Array.isArray(list) ? list.length : 0;
+  let avatars = 0;
+  try { avatars = fs.readdirSync(path.join(ROOT, 'public', 'assets', 'char', 'skin_avatar')).filter((f) => f.endsWith('.png')).length; } catch { /* none */ }
+  return { catalogued, models, bytes, avatars };
+}
+
+/**
  * What the game draws instead when the local-client art is absent (DESIGN §13, docs/DEPLOY.md §6). The battle emotes and
  * the 玩法说明 pages are not in the list: step 5 downloads them from the public mirror with the other assets (GitHub
  * issue #42). Shown by setup and doctor.
@@ -393,11 +423,12 @@ function ensureVenv(py, log) {
 // ---------------------------------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const o = { check: false, assets: true, local: 'ask', scenes: 'ask', game: null, yes: false, quiet: false, help: false, source: process.env.SP_ASSET_SOURCE || 'direct' };
+  const o = { check: false, assets: true, skins: true, local: 'ask', scenes: 'ask', game: null, yes: false, quiet: false, help: false, source: process.env.SP_ASSET_SOURCE || 'direct' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--check') o.check = true;
     else if (a === '--no-assets') o.assets = false;
+    else if (a === '--no-skins') o.skins = false;
     else if (a === '--asset-source') o.source = argv[++i];
     else if (a.startsWith('--asset-source=')) o.source = a.slice('--asset-source='.length);
     else if (a === '--no-local') o.local = 'no';
@@ -491,6 +522,27 @@ async function main() {
     if (assets.ok) add('ok', '美术/音频 public/assets', `${assets.total} 个文件`);
     else if (!assets.present) add('warn', '美术/音频 public/assets', '未下载（游戏会用占位图）→ node tools/fetch-assets.mjs');
     else add('warn', '美术/音频 public/assets', `缺 ${assets.missing}/${assets.total} 个文件 → 重新运行 setup 续传`);
+  }
+
+  // 5b. operator skins (optional, docs/SKINS.md): the catalogue and the avatars are small, the Spine models are the
+  // bulk. The base art above does not include them, so a machine can be "art complete" and still have no skins.
+  let skins = checkSkins();
+  const skinsDone = skins.models > 0 && skins.models >= skins.catalogued;
+  if (!opts.skins) add('skip', '干员皮肤 public/assets/spine/op', '已跳过（--no-skins）');
+  else if (skinsDone || opts.check) add(skinsDone ? 'ok' : 'skip', '干员皮肤 public/assets/spine/op',
+    skinsDone ? `${skins.models} 款模型，${skins.avatars} 张头像` : `目录 ${skins.catalogued} 款（模型需下载）`);
+  else if (opts.assets && !opts.check) {
+    log(`\n${c.cyan('▶')} 下载干员皮肤素材（${skins.catalogued} 款，约 190 MB，可中断，重新运行续传）…`);
+    run(process.execPath, [path.join(ROOT, 'tools', 'fetch-skin-avatars.mjs')]);
+    run(process.execPath, [path.join(ROOT, 'tools', 'fetch-skin-spines.mjs')]);
+    // the manifest only carries a skin's `spine` entry once its model is on disk, so refresh it after downloading
+    run(process.execPath, [path.join(ROOT, 'tools', 'inject-skins-assets.mjs')]);
+    skins = checkSkins();
+    add(skins.models >= skins.catalogued ? 'ok' : 'warn', '干员皮肤 public/assets/spine/op',
+      `${skins.models}/${skins.catalogued} 款模型，${skins.avatars} 张头像` +
+      (skins.models < skins.catalogued ? ' → 重新运行 setup 续传（未下载的皮肤回退干员原皮）' : ''));
+  } else if (!opts.check) {
+    add('warn', '干员皮肤 public/assets/spine/op', `未下载（--no-assets）→ node tools/fetch-skin-spines.mjs`);
   }
 
   // 6. local client (optional)

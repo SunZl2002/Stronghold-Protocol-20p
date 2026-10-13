@@ -120,7 +120,9 @@ function fakeCheckout(version) {
   // lists it for this branch's precache ZIP, and playerPackageProblems refuses a checkout whose package.json lacks one.
   const scripts = { start: 'node server/index.js', setup: 'node tools/setup.mjs', doctor: 'node tools/doctor.mjs', launch: 'node scripts/launch.mjs',
     postinstall: 'node tools/vendor.mjs', vendor: 'node tools/vendor.mjs', assets: 'node tools/vendor.mjs && node tools/fetch-assets.mjs',
-    'assets:pack': 'node tools/asset-cache-pack.mjs' };
+    'assets:pack': 'node tools/asset-cache-pack.mjs',
+    'assets:skins': 'node tools/fetch-skin-avatars.mjs && node tools/fetch-skin-spines.mjs && node tools/inject-skins-assets.mjs',
+    'assets:skins:inject': 'node tools/inject-skins-assets.mjs' };
   put(dir, 'package.json', JSON.stringify({ name: 'sp-test', version, main: 'server/index.js', scripts, dependencies: {} }));
   put(dir, 'package-lock.json', JSON.stringify({ name: 'sp-test', version, lockfileVersion: 3, packages: { '': { name: 'sp-test', version } } }));
   put(dir, 'server/index.js', "import './sim/rng.js';\n");
@@ -134,6 +136,7 @@ function fakeCheckout(version) {
     // The capacity branch's player-tool set (tools/package.mjs PLAYER_TOOLS): stageProblems requires each of these in
     // the checkout, so the fixture carries them like package.test.js's does.
     'tools/announcements.mjs', 'tools/asset-cache-pack.mjs', 'tools/crop-board-atlas.mjs', 'tools/server-settings.mjs',
+    'tools/fetch-skin-avatars.mjs', 'tools/fetch-skin-spines.mjs', 'tools/inject-skins-assets.mjs',
     'tools/asset-cache/zip.mjs', 'tools/assets/network.mjs', 'tools/local-extract/extract.py']) put(dir, f);
   put(dir, 'README.md', '# readme\n');
   put(dir, '.gitignore', 'public/assets/\npublic/fonts/\ndata/local-assets.json\n');
@@ -210,7 +213,8 @@ test('a whole update: base zip v9.9.8 → --update v9.9.9 ships only what change
     assert.deepEqual(Object.keys(listed.files).sort(), ['README.md', 'data/chess.json', 'package-lock.json', 'package.json', 'public/index.html',
       'scripts/launch.mjs', 'server/index.js', 'server/new.js', 'server/sim/rng.js', 'shared/constants.js',
       'tools/announcements.mjs', 'tools/asset-cache-pack.mjs', 'tools/asset-cache/zip.mjs', 'tools/assets/network.mjs',
-      'tools/crop-board-atlas.mjs', 'tools/doctor.mjs', 'tools/fetch-assets.mjs', 'tools/local-extract/extract.py',
+      'tools/crop-board-atlas.mjs', 'tools/doctor.mjs', 'tools/fetch-assets.mjs', 'tools/fetch-skin-avatars.mjs',
+      'tools/fetch-skin-spines.mjs', 'tools/inject-skins-assets.mjs', 'tools/local-extract/extract.py',
       'tools/server-settings.mjs', 'tools/setup.mjs', 'tools/vendor.mjs'], 'no art, no data/assets.json');
     assert.deepEqual(listed.files['server/new.js'], dg('export const n = 1;\n'));
 

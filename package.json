@@ -31,6 +31,8 @@
     "vendor": "node tools/vendor.mjs",
     "build-data": "node tools/build-data.mjs",
     "assets": "node tools/vendor.mjs && node tools/fetch-assets.mjs",
+    "assets:skins": "node tools/fetch-skin-avatars.mjs && node tools/fetch-skin-spines.mjs && node tools/inject-skins-assets.mjs",
+    "assets:skins:inject": "node tools/inject-skins-assets.mjs",
     "postinstall": "node tools/vendor.mjs",
     "setup": "node tools/setup.mjs",
     "doctor": "node tools/doctor.mjs",

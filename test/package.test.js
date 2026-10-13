@@ -40,6 +40,7 @@ test('selection: runtime files in; tests, maintainer tools, other docs, dev page
     'server/index.js', 'server/sim/rng.js', 'shared/constants.js', 'public/index.html', 'public/js/main.js', 'public/i18n/en.json',
     'data/chess.json', 'data/i18n/en.json', 'tools/setup.mjs', 'tools/vendor.mjs', 'tools/fetch-assets.mjs', 'tools/doctor.mjs',
     'tools/announcements.mjs', 'docs/ANNOUNCEMENTS.md', 'tools/crop-board-atlas.mjs', 'tools/assets/plan.mjs', 'tools/assets/local-enemy-spines.json', 'tools/assets/local-token-spines.json',
+    'tools/fetch-skin-avatars.mjs', 'tools/fetch-skin-spines.mjs', 'tools/inject-skins-assets.mjs',
     'tools/local-extract/extract.py',
     'tools/local-extract/LICENSE-Ark-Unpacker.txt', 'scripts/start.sh', 'scripts/start-windows.bat', 'scripts/launch.mjs',
     'scripts/install-service-windows.ps1', 'docs/PLAYING.md', 'docs/DEPLOY.md', ...RUNTIME_RESEARCH, 'package.json',
@@ -59,7 +60,8 @@ test('selection: runtime files in; tests, maintainer tools, other docs, dev page
     'docs/research/07-assets.json', 'CHANGELOG.md']) {
     assert.ok(keep.includes(f), `keeps ${f}`);
   }
-  assert.equal(keep.length, 37, keep.join(' '));
+  // 41: the seed list above, everything RUNTIME_RESEARCH covers (08-skins.json included) and the three skin tools
+  assert.equal(keep.length, 41, keep.join(' '));
   assert.ok(keep.includes('tools/announcements.mjs'));
   assert.ok(keep.includes('docs/ANNOUNCEMENTS.md'));
   assert.ok(drop.includes('runtime/announcements/index.json'));
@@ -119,8 +121,12 @@ test('import specifiers resolve like the server mounts; npm entry points must sh
   assert.equal(resolveSpecifier('server/a.js', 'node:fs'), null);
   assert.equal(resolveSpecifier('server/a.js', 'ws'), null);
   const pkg = { main: 'server/index.js', scripts: { start: 'node server/index.js', setup: 'node tools/setup.mjs', doctor: 'node tools/golden.mjs',
-    launch: 'node scripts/launch.mjs', postinstall: 'node tools/vendor.mjs', vendor: 'node tools/vendor.mjs', assets: 'node tools/vendor.mjs && node tools/fetch-assets.mjs', 'assets:pack': 'node tools/asset-cache-pack.mjs' } };
-  const shipped = ['server/index.js', 'tools/setup.mjs', 'scripts/launch.mjs', 'tools/vendor.mjs', 'tools/fetch-assets.mjs', 'tools/asset-cache-pack.mjs'];
+    launch: 'node scripts/launch.mjs', postinstall: 'node tools/vendor.mjs', vendor: 'node tools/vendor.mjs', assets: 'node tools/vendor.mjs && node tools/fetch-assets.mjs',
+    'assets:pack': 'node tools/asset-cache-pack.mjs',
+    'assets:skins': 'node tools/fetch-skin-avatars.mjs && node tools/fetch-skin-spines.mjs && node tools/inject-skins-assets.mjs',
+    'assets:skins:inject': 'node tools/inject-skins-assets.mjs' } };
+  const shipped = ['server/index.js', 'tools/setup.mjs', 'scripts/launch.mjs', 'tools/vendor.mjs', 'tools/fetch-assets.mjs', 'tools/asset-cache-pack.mjs',
+    'tools/fetch-skin-avatars.mjs', 'tools/fetch-skin-spines.mjs', 'tools/inject-skins-assets.mjs'];
   assert.deepEqual(entryProblems(pkg, shipped), ['npm run doctor: tools/golden.mjs is not shipped']);
   assert.deepEqual(entryProblems({ ...pkg, scripts: { ...pkg.scripts, doctor: undefined } }, shipped), ['npm script "doctor" is missing']);
 });
@@ -147,6 +153,8 @@ function fakeCheckout() {
   const scripts = { start: 'node server/index.js', setup: 'node tools/setup.mjs', doctor: 'node tools/doctor.mjs', launch: 'node scripts/launch.mjs',
     postinstall: 'node tools/vendor.mjs', vendor: 'node tools/vendor.mjs', assets: 'node tools/vendor.mjs && node tools/fetch-assets.mjs',
     'assets:pack': 'node tools/asset-cache-pack.mjs',
+    'assets:skins': 'node tools/fetch-skin-avatars.mjs && node tools/fetch-skin-spines.mjs && node tools/inject-skins-assets.mjs',
+    'assets:skins:inject': 'node tools/inject-skins-assets.mjs',
     test: 'node --test', golden: 'node tools/golden.mjs', package: 'node tools/package.mjs' };
   put('package.json', JSON.stringify({ name: 'sp-test', version: '9.9.9', main: 'server/index.js', scripts, dependencies: {} }));
   put('package-lock.json', JSON.stringify({ name: 'sp-test', version: '9.9.9', lockfileVersion: 3, packages: { '': { name: 'sp-test' } } }));
@@ -162,6 +170,7 @@ function fakeCheckout() {
   put('tools/setup.mjs', "import { n } from './assets/network.mjs';\n");
   for (const f of ['tools/announcements.mjs', 'tools/assets/network.mjs', 'tools/vendor.mjs', 'tools/fetch-assets.mjs', 'tools/doctor.mjs', 'tools/crop-board-atlas.mjs',
     'tools/local-extract/extract.py', 'tools/asset-cache-pack.mjs', 'tools/asset-cache/zip.mjs', 'tools/golden.mjs', 'tools/build-data.mjs', 'tools/package.mjs', 'scripts/launch.mjs',
+    'tools/fetch-skin-avatars.mjs', 'tools/fetch-skin-spines.mjs', 'tools/inject-skins-assets.mjs',
     'scripts/make-windows-bundle.mjs', 'test/a.test.js', 'handoff/HANDOFF.md', '.github/workflows/ci.yml', 'types/core.js', 'eslint.config.js',
     'Dockerfile', 'AGENTS.md', 'review/notes.md', 'docs/DESIGN.md', 'docs/research/00-INDEX.md', 'docs/research/10-networking-hosting.md']) put(f);
   put('scripts/start.sh', '#!/usr/bin/env bash\nexec node scripts/launch.mjs\n');
@@ -197,6 +206,7 @@ const SHIPPED_TRACKED = ['CHANGELOG.md', 'LICENSE', 'NOTICE.md', 'README.md', 'T
   'docs/ANNOUNCEMENTS.md', 'docs/ASSET_CACHE.md', 'docs/DEPLOY.md', 'docs/PLAYING.md', ...RUNTIME_RESEARCH, 'package-lock.json', 'package.json', 'public/index.html', 'public/js/main.js',
   'public/js/util.js', 'scripts/launch.mjs', 'scripts/start.sh', 'server/index.js', 'server/sim/rng.js', 'shared/constants.js',
   'tools/announcements.mjs', 'tools/asset-cache-pack.mjs', 'tools/asset-cache/zip.mjs', 'tools/assets/network.mjs', 'tools/crop-board-atlas.mjs', 'tools/doctor.mjs', 'tools/fetch-assets.mjs', 'tools/local-extract/extract.py',
+  'tools/fetch-skin-avatars.mjs', 'tools/fetch-skin-spines.mjs', 'tools/inject-skins-assets.mjs',
   'tools/setup.mjs', 'tools/vendor.mjs'].sort();
 const ART = ['data/local-assets.json', 'public/assets/char/a.png', 'public/assets/local/g/x.png', 'public/assets/local/g/x.webp',
   'public/assets/local/spine/token/token_x/token_x.skel', 'public/assets/ui/b c.png', 'public/fonts/fonts.css', 'public/fonts/x.woff2'];
