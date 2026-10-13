@@ -173,3 +173,40 @@ test('20 席 m.public 的皮肤载荷：紧凑编解码往返一致，且无皮�
   assert.ok(extra > 0 && extra < 3000, `20 seats add ${extra} B per broadcast (expected under 3 KB)`);
 });
 
+/**
+ * A board piece's skin has to survive the trip into the battle simulation, because that is the model the battlefield
+ * draws. The chain is: MatchPlayer.battleInput sets `skin` on the plain input -> battle/players.js
+ * _createAllyFromInput -> _makeAlly({ skin }) -> sim/units.js Unit({ skin }) -> snapshot.js unitInfo publishes it.
+ *
+ * This test exists because the port originally missed the two middle links: `skin` was set on the input object but
+ * _makeAlly never forwarded it and Unit had no such field, so the field was silently dropped on every deployment
+ * (the prep view still looked right, which is exactly what made it hard to notice).
+ */
+test('战场单位：干员的皮肤必须穿过模拟层到达 unitInfo（曾经在此静默丢失）', async () => {
+  const { makeBattle, chessRec } = await import('../test/helpers/battleHarness.js');
+  const { unitInfo } = await import('../server/sim/snapshot.js');
+  const guard = (o = {}) => chessRec({ id: o.id, profession: 'WARRIOR', stats: { atk: 300, blockCnt: 2 }, ...o });
+  const SKIN = 'char_199_yak@summer#1';
+
+  const h = makeBattle({
+    defs: { chess: { a: guard({ id: 'a' }), b: guard({ id: 'b' }) } },
+    units: [{ chessId: 'a', row: 9, col: 5, skin: SKIN }, { chessId: 'b', row: 12, col: 7 }],
+    content: 'none',
+  });
+  h.step();
+
+  const a = h.battle.units.find((u) => u.defId === 'a');
+  const b = h.battle.units.find((u) => u.defId === 'b');
+
+  // the two links the port missed first time round
+  assert.equal(a?.skin, SKIN, 'sim/units.js Unit keeps the skin');
+  assert.equal(b?.skin, null, 'a unit without a skin holds null, not undefined');
+
+  // what the renderer reads
+  const va = unitInfo(a), vb = unitInfo(b);
+  assert.equal(va.skin, SKIN, 'unitInfo publishes it');
+  assert.equal(vb.skin, undefined, 'undefined (not null) so JSON.stringify drops it');
+  assert.ok(JSON.stringify(va).includes(`"skin":"${SKIN}"`), 'it reaches the wire');
+  assert.ok(!JSON.stringify(vb).includes('"skin"'), 'a skinless unit costs the broadcast nothing');
+});
+
