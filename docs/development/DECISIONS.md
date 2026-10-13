@@ -393,6 +393,7 @@
   上游的结论来自单人会话，而 20 席房的广播正是「重复视图」流。实测 24 条 20 席 `m.public`
   （1.10 MB JSON）：分支配置 76 KB（−93.1 %），上游配置 242 KB（−78.1 %）——**上游是 3.2 倍字节**；
   且 `test/wire-pressure.test.js`（84 连接共享 0.8 Mbps）用分支配置通过、用上游配置失败。
+  这条**不是本次一次性裁决，是长期约定**——见 [D036](#d036)。
   `WS_DEFLATE` 保留为 `narrowDeflateOffer` 的比较上限并注明本分支不协商它。
   上游新增的 `test/ws-compression.test.js` 改为断言 `WS_COMPRESSION` 的对应值（测试意图不变）。
 - **HTTP 压缩沿用上游 0.2.6 的实现**：`BROTLI_QUALITY` + `brotliParams`（按扩展名选 text/generic 模式并给
@@ -417,4 +418,31 @@
 - 原因：上游把 v0.2.6 的绝大部分工作放在宿主带宽上，与本分支 D021/D022/D030 是**同一目标的两套手段**，
   必须逐层判断谁更有效，而不是整块取一边；实测证明 WebSocket 一层分支的更省带宽，HTTP 一层上游的更完整。
 - 依据：本次合并记录 [2026-10-13-01](records/2026-10-13-01-upstream-v0.2.6-20p.md)；
-  验证 `test/golden.test.js` 全量 9/9 通过（未 update 上游基准）、容量与库存回归 240/240 通过。
+  验证 `test/golden.test.js` 全量 9/9 通过（未 update 上游基准）、容量与库存回归 294/294 通过。
+
+## D036
+
+**生效：WebSocket 压缩永久采用 20 人版的 `WS_COMPRESSION`；以后每一次跟随上游更新都必须保留它。**
+
+- 用户 2026-10-13 明确要求：**保留 20 人版的压缩配置，并且以后更新都以 20 人版的压缩配置为准。**
+  这不是 D035 那一次性裁决的重复，而是它的**长期化**：上游今后若再改 `permessage-deflate` 参数
+  （窗口、上下文保留、阈值、并发限制），**一律不覆盖 `WS_COMPRESSION`**，只按需吸收上游的其他改动。
+- 唯一裁判是本仓库 `server/http/websocket.js` 的 `WS_COMPRESSION`：`serverNoContextTakeover: false`
+  （保留 32 KiB 出站字典）、`clientNoContextTakeover: true`、`serverMaxWindowBits: 15`、
+  `threshold: 256`、`concurrencyLimit: 4`、level 6 / memLevel 7。浏览器端不需要任何自定义解压器。
+- **代价与边界（须知）**：服务端每条连接保留约 32 KiB zlib 状态，CPU 用于压缩；
+  换来的是 20 席重复视图流上约 **3.2 倍**的字节节省。对 1–4 人小房间两者差别不大，
+  但本决定按**最大房间**取参数，不从人数回退。
+- **为什么必须写死**：上游的注释依据是**单人会话**（「更大的窗口没有收益」），而 20 人房 8 Hz 的
+  `m.public` 广播正是重复视图流——两者的结论天然相反。上游 0.2.6 的新测试
+  `test/ws-compression.test.js` 钉的是上游自己的常量，**每次同步都会红**，那是预期的：
+  **适配测试，不要改实现**（把它断言的目标从 `WS_DEFLATE` 换回 `WS_COMPRESSION` 即可，测试意图不变）。
+- **判定回归的唯一方式**：`test/wire-pressure.test.js`（84 个紧凑连接 + 冷 HTTP，共享 0.8 Mbps，
+  p95 控制 RTT < 2 s）必须通过。它用 `WS_COMPRESSION` 通过、用上游 `WS_DEFLATE` 失败——
+  这条测试就是本决定的守卫，**不要为了让它变绿去调阈值**。
+- 若将来确有必要重新评估，必须先给出**同一台机器上的 A/B 实测**（同样是 ≥20 席、8 Hz、
+  合并后的完整视图语料），并把 `test/wire-pressure.test.js` 的结果一并附上；没有实测不得改。
+  用户已明确表态，**不要再用「上游这么做」当作改动理由**。
+- 依据：用户 2026-10-13 的决定；实现 `server/http/websocket.js`（`WS_COMPRESSION`）；
+  守卫 `test/wire-pressure.test.js`、`test/ws-compression.test.js`（已适配）；
+  实测数据与 A/B 方法见 [本次合并记录](records/2026-10-13-01-upstream-v0.2.6-20p.md)。

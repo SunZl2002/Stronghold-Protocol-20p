@@ -3,11 +3,12 @@
 // compressed, a frame under the 256 B threshold and a client without the extension get plain frames, and an offer that
 // caps the server window below the ceiling is answered without compression instead of a refused handshake.
 //
-// Adapted from upstream 0.2.6: its assertions pinned upstream's own WS_DEFLATE constants (no context takeover, a 2 KB
-// window, a 1 KB threshold). This branch negotiates WS_COMPRESSION instead — measured at 3.2× fewer wire bytes on a
-// 20-seat room's repeated m.public stream, and required by test/wire-pressure.test.js (84 sockets, 0.8 Mbps budget) —
-// so the constants come from WS_COMPRESSION here. The test's intent is unchanged: negotiation, compression,
-// the plain-frame paths and the narrow-offer guard.
+// Adapted from upstream 0.2.6, and EXPECTED TO NEED THIS ADAPTATION ON EVERY SYNC (D036): upstream's assertions pin
+// upstream's own WS_DEFLATE constants (no context takeover, a 2 KB window, a 1 KB threshold), while this branch
+// negotiates WS_COMPRESSION permanently — measured at 3.2× fewer wire bytes on a 20-seat room's repeated m.public
+// stream, and required by test/wire-pressure.test.js (84 sockets, 0.8 Mbps budget). Keep the constants sourced from
+// WS_COMPRESSION here; the test's intent is unchanged: negotiation, compression, the plain-frame paths, the narrow-offer
+// guard.
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';

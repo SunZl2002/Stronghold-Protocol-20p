@@ -127,6 +127,7 @@ git diff --name-only --diff-filter=U        # 冲突文件清单
 | 素材预缓存 | `assetCacheCatalog.js`、`http/assetCache.js`、`public/js/assetCache.js`、`asset-cache-sw.js` | D016/D023/D025/D031 按哈希补缺、单缓存 SW |
 | 大厅目录及身份恢复 | `lobbyDiscovery.js`、`server/lobby.js`、`ui/lobbyDiscovery.js`、`public/js/net.js` | D017/D032 实际空席匹配、仅大厅订阅 |
 | 紧凑编码与模块缓存 | `shared/wireCodec.js`、`public/js/runtime.js`、渲染加载器 | D021 v1 布局不重排，新字段放扩展位 |
+| **WebSocket 压缩** | `server/http/websocket.js` 的 `WS_COMPRESSION` | **D036：永久用 20 人版的配置，绝不换成上游的参数**。上游改 `permessage-deflate` 时只吸收其他改动。上游的 `test/ws-compression.test.js` **每次都会红，那是预期的——适配测试，不要改实现**。守卫是 `test/wire-pressure.test.js`（84 连接 / 0.8 Mbps），**不要为了让它变绿去调阈值** |
 
 > **已知的历史教训**：上游 v0.2.2 的「AI 队友最后选择」开关在本分支被固定为**开**（D004）。
 > 合并时**不得**用该开关关掉既定优先规则。
@@ -246,6 +247,9 @@ node tools/doctor.mjs
 - 联防轮数上限 = 开局固定组数（D013）。
 - 领袖血池 = `bloodPoint × 开战时存活人数`（上限 20），中途退出按百分比缩池（D009）。
 - 紧凑协议 v1 **已发布的 ID/字段/枚举不重排**，新东西追加到扩展位（D021）。
+- **WebSocket 压缩 = 20 人版的 `WS_COMPRESSION`**（D036）。这一条**永远不会让给上游**：
+  它是「永久保留」而不是「本次保留」。每次同步后确认 `server/http/websocket.js` 里
+  `serverNoContextTakeover: false` / `serverMaxWindowBits: 15` / `threshold: 256` 没有被上游参数替换。
 
 **可以放心让给上游的**
 
@@ -293,6 +297,7 @@ node tools/fetch-assets.mjs --add-only           # 已有素材较完整时优�
    实测 24 条 20 席 `m.public`（1.10 MB JSON）分支配置 76 KB（−93.1 %）、上游配置 242 KB（−78.1 %），
    而 `test/wire-pressure.test.js`（84 连接 / 0.8 Mbps）用分支配置通过、用上游配置失败。
    结论：**保留分支配置，适配测试**，并在测试与实现注释里写清依据。
+   **D036 已把这条长期化**：以后每次同步都按这个结论办，不需要重新讨论。
 2. **上游新代码可能假设调用方给全了参数**。0.2.6 的流量计数器写成 `if (health.traffic)`，
    没给 `health` 做可选链；本分支的 `test/runtime-http.test.js` 只装配静态服务，
    于是**每个请求都抛 TypeError**。这类缺陷 git 不会报冲突，只有跑到那个调用方才暴露。

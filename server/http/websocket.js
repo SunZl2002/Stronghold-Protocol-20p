@@ -18,17 +18,19 @@ export const WS_MAX_PAYLOAD = 64 * 1024;
 
 // RFC 7692 raw DEFLATE — the coding this server actually negotiates (D021's compact wire).
 //
-// Upstream 0.2.6 ships `WS_DEFLATE` instead: 1 KB threshold, `serverNoContextTakeover`, a 2 KB window. Its comment
-// measures a *solo* session and concludes that larger windows gain nothing there. On this branch's traffic they do:
-// a 20-seat room's broadcast IS the repeated-view stream, so dropping the context and cutting the window costs
-// 3.2× the bytes on the wire. Measured with 24 coalesced 20-seat m.public views (1.10 MB of JSON):
+// STANDING RULE (D036, owner's decision 2026-10-13): this configuration is kept PERMANENTLY, and every future
+// upstream sync keeps it too. Upstream v0.2.6 ships `WS_DEFLATE` instead — 1 KB threshold,
+// `serverNoContextTakeover`, a 2 KB window — measured on a *solo* session, where larger windows gain nothing. A
+// 20-seat room's 8 Hz broadcast IS the repeated-view stream that this branch's compact wire produces, so there the
+// difference is large. Measured with 24 coalesced 20-seat m.public views (1.10 MB of JSON):
 //
 //   WS_COMPRESSION (this, 32 KiB dictionary kept)  1.10 MB → 76 KB   (93.1 % saved)
 //   WS_DEFLATE     (upstream, no context, 2 KiB)   1.10 MB → 242 KB  (78.1 % saved)
 //
-// and `test/wire-pressure.test.js` (84 compact sockets sharing a 0.8 Mbps budget) passes with this config and fails
-// with upstream's. Keep this one; `test/ws-compression.test.js` is adapted to it (upstream's assertions pinned
-// upstream's own constants, not the protocol).
+// — 3.2× the bytes on the wire. `test/wire-pressure.test.js` (84 compact sockets sharing a 0.8 Mbps budget) passes
+// with this config and FAILS with upstream's; that test is this rule's guard, so never tune its thresholds to make
+// it green. Upstream's `test/ws-compression.test.js` pins upstream's own constants and will therefore FAIL on every
+// sync: that is expected — adapt the test to `WS_COMPRESSION`, never the implementation to the test.
 //
 // Retaining the outbound 32 KiB dictionary exploits repeated views; ws bounds global zlib work. Incoming clients do
 // not retain context, and maxPayload still bounds decompressed input. No custom browser inflater.
