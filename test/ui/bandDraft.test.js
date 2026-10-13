@@ -37,7 +37,9 @@ describe('server: skip requires a successor and remaining quota', () => {
       assert.equal(m.draftTurn(), last);
       assert.equal(m.publicView().draft.order.length, humans, 'the published order retains finished players');
       assert.equal(m.draft.skipsLeft[last], 1);
-      assert.deepEqual(m.handle(last, { t: 'g.bandSkip' }), { error: ERR.BAD_TARGET, detail: 'nobody to pass to' });
+      // The detail is this branch's: skipBand only yields to another player who can still choose MANUALLY (D004), so
+      // the refusal names that rule (upstream's 0.2.6 detail, 'nobody to pass to', describes its unpicked-player rule).
+      assert.deepEqual(m.handle(last, { t: 'g.bandSkip' }), { error: ERR.BAD_TARGET, detail: 'no manual teammate to pass to' });
       assert.equal(m.draftTurn(), last);
       assert.equal(m.draft.skipsLeft[last], 1, 'a refused skip consumes no quota');
       assert.deepEqual(m.handle(last, { t: 'g.band', bandId: m.defaultBand(last) }), { ok: true });
