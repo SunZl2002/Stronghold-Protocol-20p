@@ -96,6 +96,22 @@ below line by line so they can be re-applied after merging an upstream release*�
 | `test/wire-codec.test.js` | 15/15，**v1 指纹未变** |
 | `npx eslint`（全部改动文件） | **0 errors**（7 warnings，均为改动前既有风格项） |
 | `node tools/check-imports.mjs` | 3 个既有 note，**0 新增违规** |
+| `node tools/i18n.mjs check --strict` | **1379/1379（100%）**，0 missing / 0 errors |
+| 全量 `node --test` | **9 项失败**，全部逐条归因（见下）：7 项为既有失败或本机素材不全，2 项是「素材只有一部分」触发的条件检查 |
+
+### 全量套件的 9 项失败逐条归因
+
+皮肤移植后全量套件从 5 项变成 9 项，**每一项都查清了**，没有一项是移植缺陷：
+
+| 失败 | 归因 |
+|---|---|
+| `consume-on-equip built-ins`、`real-time co-op over websockets`、`all/sample verification lets an unrelated real timer run`、`performance: heavy 2-player boss field < 0.5 ms/tick`、`84 compact sockets … 0.8 Mbps` | **既有**：v0.2.6 合并后就有（绝对毫秒阈值 + 并发挤压，单独跑通过） |
+| `packaged copies of the shipped docs …` | **既有**：`test/package-player.test.js`，在 `e61a6398` 上同样失败 |
+| `the committed data/assets.json lists every 自选 operator's …`、`generated manifest data/assets.json` | **本机素材只有一部分**：这两条属 `test/assets.test.js`，其磁盘检查**条件执行**。本机此前没有 `public/assets` ⇒ 一直 skip；皮肤模型落地后开始执行，而基础素材缺 10963/11140。**实验证明**：临时移开 `public/assets`，该文件回到 **45 pass / 9 skipped / 0 fail**，与移植前逐项相同 |
+
+移植过程中**真正由我引入、并且已修**的失败共 4 项：`test/package.test.js`（3 处硬编码清单/计数，
+打包守卫抓出来的）、`test/ui/standin-ui.test.js`（钉死了视图 `sig` 模板，而我把 `skin` 加进了它）、
+`node tools/i18n.mjs check --strict`（皮肤选择器的 8 处中文没包 `t()`）。
 
 ### 一、离线验证「皮肤骨骼能与原皮共用动作数据」（批量前的关键闸门）
 
@@ -252,6 +268,12 @@ chess id，四条断言全红。这正好印证了「混用是静默失败点」
 6. `test/package-player.test.js` 有 **1 个既有失败**（`docs/ANNOUNCEMENTS.md` 的
    `assets/banner.png` 源链接检查）。已用 worktree 证明它**在皮肤移植之前（`e61a6398`）就以同样方式失败**，
    与本次工作无关，未修。
+7. **`test/assets.test.js` 的 2 条失败是本机「素材只有一部分」造成的，不是移植缺陷。**
+   该文件的磁盘检查是**条件执行**的（`public/assets` 存在才跑）；本机此前**根本没有**该目录，
+   所以它们一直是 skip。皮肤模型落地后它们开始执行，而本机**缺基础素材**
+   （`setup --check` 报 `美术/音频 缺 10963/11140`），于是报缺头像/立绘/技能图标/BGM。
+   已用实验证明：把 `public/assets` 临时移开，`assets.test.js` 回到 **45 pass / 9 skipped / 0 fail**
+   —— 与皮肤移植之前**逐项相同**。**装齐素材的机器上这些检查应当通过。**
 
 ## 后续补充
 
