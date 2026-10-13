@@ -1244,14 +1244,26 @@ function cssRules(src) {
   return out;
 }
 
+/** Stylesheets this branch appends after devices.css (announcements, pre-cache, in-match chat). */
+const BRANCH_SHEETS = ['/css/announcements.css', '/css/asset-cache.css', '/css/match-chat.css'];
+
 describe('multi-device & browser compatibility (static)', () => {
   const index = readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
 
-  test('index.html: landscape viewport without page zoom, notch-aware, devices.css last, boot diagnostics', () => {
+  test('index.html: landscape viewport without page zoom, notch-aware, devices.css ordering, boot diagnostics', () => {
     const vp = index.match(/<meta name="viewport" content="([^"]+)"/)?.[1] || '';
     for (const k of ['width=device-width', 'initial-scale=1', 'maximum-scale=1', 'user-scalable=no', 'viewport-fit=cover']) assert.ok(vp.includes(k), `viewport has ${k}`);
-    const sheets = [...index.matchAll(/<link rel="stylesheet" href="(\/css\/[^"]+)"/g)].map((x) => x[1]);
-    assert.equal(sheets[sheets.length - 1], '/css/devices.css', 'devices.css is the last stylesheet');
+    // Local /css/ sheets only, and one link per line: the Google Fonts <link> spans two lines, so a greedy .* would
+    // run from its href to the next href and invent entries.
+    const sheets = [...index.matchAll(/^\s*<link rel="stylesheet"[^>]*href="(\/css\/[^"]+)"/gm)].map((x) => x[1]);
+    // devices.css carries the media-query overrides and must stay after every screen sheet. The capacity branch adds
+    // its own feature sheets (announcements, asset-cache, match-chat) around it and links all three; what must not
+    // happen is an unrelated sheet appearing after devices.css.
+    const devicesAt = sheets.indexOf('/css/devices.css');
+    assert.ok(devicesAt >= 0, 'devices.css is linked');
+    assert.ok(sheets.length >= 15, `only ${sheets.length} local stylesheets found`);
+    for (const s of BRANCH_SHEETS) assert.ok(sheets.includes(s), `${s} is linked`);
+    for (const s of sheets.slice(devicesAt + 1)) assert.ok(BRANCH_SHEETS.includes(s), `${s} follows devices.css and is not a branch feature sheet`);
     assert.match(index, /<script nomodule>/, 'a browser without ES modules gets a message');
     assert.match(index, /onerror="window\.__spBootFail/, 'a module graph that cannot load gets a message');
     assert.match(index, /apple-mobile-web-app-capable/);
