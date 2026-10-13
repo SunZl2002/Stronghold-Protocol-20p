@@ -175,12 +175,14 @@ test('large text streams Brotli without a Content-Length and preserves the full 
 test('encoding weights/exclusions and URL resolution honor fallback and same-origin version boundaries', () => {
   // pickEncoding is the one negotiator after the v0.2.6 merge (upstream's name; the branch's stricter rules are kept
   // inside it). Judgements kept from before the merge: a q the header states but that is not a valid weight is a
-  // REFUSAL (so `br;q=bad,gzip` is gzip and `br;q=2,gzip;q=-1` is null, not brotli), and an explicit
-  // `identity;q=` above both codings means no compression. Upstream's rule that `*` alone never picks brotli is kept
-  // too: `gzip;q=0,*;q=0.5` is gzip (the wildcard stands for the codings the header does not name).
+  // REFUSAL (so `br;q=bad,gzip` is gzip and `br;q=2,gzip;q=-1` is null, not brotli); an explicit `identity;q=` above
+  // both codings means no compression; and a header that refuses the codings it names while naming no other leaves
+  // only identity (`gzip;q=0,*;q=0.5` — the wildcard cannot re-offer a coding the header just refused, and `br` is
+  // never taken from `*`). Upstream's consequence, that `*` alone is gzip, still holds.
   for (const [header, wanted] of [[undefined, null], ['gzip, br', 'br'], ['br;q=0.2,gzip;q=0.9', 'gzip'],
-    ['br;q=0,gzip;q=0', null], ['gzip;q=0,*;q=0.5', 'gzip'], ['br;q=bad,gzip', 'gzip'], ['x-gzip', 'gzip'],
+    ['br;q=0,gzip;q=0', null], ['gzip;q=0,*;q=0.5', null], ['br;q=bad,gzip', 'gzip'], ['x-gzip', 'gzip'],
     ['gzip;q=0.4,identity;q=1', null], ['br;q=2,gzip;q=-1', null]]) assert.equal(pickEncoding(header), wanted, header);
+  assert.equal(pickEncoding('*'), 'gzip');
   assert.equal(pickEncoding('gzip, br', false), 'gzip');
   assert.equal(pickEncoding('br', false), null);
   const pinned = '/data/config.json?rv=' + 'a'.repeat(64);
