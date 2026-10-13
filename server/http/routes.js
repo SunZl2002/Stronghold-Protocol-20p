@@ -119,7 +119,9 @@ export function createRequestHandler({ serveStatic, health, log, trustProxy = 'a
 
   const listener = (req, res) => {
     setSecurityHeaders(res);
-    if (health.traffic) health.traffic.meter(res, splitUrl(req.url || '/')?.rawPath || '/');
+    // health is optional: serve-only embedders (and this branch's runtime-cache tests) build the handler without the
+    // status wiring, and the traffic meter is a counter — it must never be able to fail a request.
+    if (health?.traffic) health.traffic.meter(res, splitUrl(req.url || '/')?.rawPath || '/');
     handleRequest(req, res).catch((e) => {
       if (res.destroyed) return;
       log.error('[http] request failed', e);

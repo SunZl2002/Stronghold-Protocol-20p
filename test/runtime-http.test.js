@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { gunzipSync, brotliDecompressSync } from 'node:zlib';
 import { createStaticHandler, DATA_SHIM_JS } from '../server/http/static.js';
 import { createRequestHandler } from '../server/http/routes.js';
-import { preferredEncoding } from '../server/http/files.js';
+import { pickEncoding } from '../server/http/files.js';
 import { createRuntimeResolver, runtimeCacheMode } from '../public/js/runtime.js';
 
 const log = { warn() {}, error() {}, debug() {} };
@@ -173,11 +173,16 @@ test('large text streams Brotli without a Content-Length and preserves the full 
 });
 
 test('encoding weights/exclusions and URL resolution honor fallback and same-origin version boundaries', () => {
+  // pickEncoding is the one negotiator after the v0.2.6 merge (upstream's name; the branch's stricter rules are kept
+  // inside it). Judgements kept from before the merge: a q the header states but that is not a valid weight is a
+  // REFUSAL (so `br;q=bad,gzip` is gzip and `br;q=2,gzip;q=-1` is null, not brotli), and an explicit
+  // `identity;q=` above both codings means no compression. Upstream's rule that `*` alone never picks brotli is kept
+  // too: `gzip;q=0,*;q=0.5` is gzip (the wildcard stands for the codings the header does not name).
   for (const [header, wanted] of [[undefined, null], ['gzip, br', 'br'], ['br;q=0.2,gzip;q=0.9', 'gzip'],
-    ['br;q=0,gzip;q=0', null], ['gzip;q=0,*;q=0.5', 'br'], ['br;q=bad,gzip', 'gzip'], ['x-gzip', 'gzip'],
-    ['gzip;q=0.4,identity;q=1', null], ['br;q=2,gzip;q=-1', null]]) assert.equal(preferredEncoding(header), wanted, header);
-  assert.equal(preferredEncoding('gzip, br', false), 'gzip');
-  assert.equal(preferredEncoding('br', false), null);
+    ['br;q=0,gzip;q=0', null], ['gzip;q=0,*;q=0.5', 'gzip'], ['br;q=bad,gzip', 'gzip'], ['x-gzip', 'gzip'],
+    ['gzip;q=0.4,identity;q=1', null], ['br;q=2,gzip;q=-1', null]]) assert.equal(pickEncoding(header), wanted, header);
+  assert.equal(pickEncoding('gzip, br', false), 'gzip');
+  assert.equal(pickEncoding('br', false), null);
   const pinned = '/data/config.json?rv=' + 'a'.repeat(64);
   const resolve = createRuntimeResolver({ '/data/config.json': pinned, '/js/main.js': 'https://other.invalid/js/main.js?rv=' + 'b'.repeat(64) }, 'https://game.invalid/');
   assert.equal(resolve('/data/config.json'), pinned);

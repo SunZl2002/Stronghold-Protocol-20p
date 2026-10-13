@@ -196,7 +196,11 @@ export const GzipCache = CompressCache;
 // HTTP helpers
 // ---------------------------------------------------------------------------------------------------
 
-/** Accept-Encoding → { token: q }: lower-case tokens, `x-gzip` canonicalised to `gzip`, malformed/out-of-range q as 0. */
+/**
+ * Accept-Encoding → { token: q }: lower-case tokens, `x-gzip` canonicalised to `gzip`, and a q the header states but
+ * that is not a valid weight (`q=bad`, `q=2`, `q=-1`) counted as **0** — a malformed weight is a refusal, not a
+ * silent `q=1`. That is the one place this differs from a plain "ignore what does not parse" reading.
+ */
 function encodingPreferences(header) {
   const preferences = new Map();
   if (!header || typeof header !== 'string') return preferences;
@@ -205,10 +209,9 @@ function encodingPreferences(header) {
     if (!token) continue;
     let q = 1;
     for (const p of params) {
-      const m = /^\s*q=([0-9.]+)\s*$/.exec(p);
-      if (m) q = Number(m[1]);
+      const m = /^\s*q\s*=\s*(.*?)\s*$/.exec(p);
+      if (m) q = m[1] === '' ? 0 : Number(m[1]);
     }
-    // A refused coding is one the header names with `q=0` (or an out-of-range q), never one it cannot parse.
     if (!Number.isFinite(q) || q < 0 || q > 1) q = 0;
     preferences.set(token === 'x-gzip' ? 'gzip' : token, q);
   }
@@ -227,7 +230,9 @@ function encodingPreferences(header) {
 export function pickEncoding(header, brotli = process.env.SP_HTTP_BROTLI !== '0') {
   const preferences = encodingPreferences(header);
   const wildcard = preferences.get('*') ?? 0;
-  const br = brotli ? preferences.get('br') ?? wildcard : 0;
+  // `br` must be NAMED to be chosen: `*` stands for every coding the header does not name, and gzip is the safe
+  // reading of it (upstream's rule, kept here).
+  const br = brotli && preferences.has('br') ? preferences.get('br') : 0;
   const gz = preferences.get('gzip') ?? wildcard;
   if (br <= 0 && gz <= 0) return null;
   // An explicit `identity;q=` higher than both is the client asking for no compression.

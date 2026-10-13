@@ -380,3 +380,41 @@
 - 界面：等候房在人数上限旁给出观战上限选择器（房主可点，其他人只读），观战席条显示 `已用 / 本房上限`，上限为 0 且无人观看时不显示该条；大厅房间行按本房上限显示「观战席 n / N」，上限为 0 的房间不出现观战入口。
 - 原因与取舍：**这修订了上游 0.2.2 §27.50 的既有决定**（作者当时以「观战人数越多，战斗广播的流量也越大」为由，拒绝了把上限做成每房 0–8、并保持固定 2 席）。用户明确要求默认 4 且房主可调。带宽依据：紧凑协议实测单连接公共状态约 27 kbps（原 JSON 3.84 Mbps，−99.29%），8 Hz 下 20 席房加 8 名观战者仍在 `test/wire-pressure.test.js`（84 连接、共享 0.8 Mbps）已覆盖的量级内；上限维持在 8 而非无限制，正是保留这条带宽边界。真正的风险点是**未刷新的旧页面**（单客户端约 2.85 Mbps），见 [OPERATIONS_20P.md](../OPERATIONS_20P.md) §6。
 - 依据：用户 2026-10-12 的决定；入口 `shared/constants.js`、`server/lobby.js`（`Room`、`spectate`、`setSpectatorCapacity`、`create`）、`server/lobbyDiscovery.js`、`shared/protocol.js`、`public/js/screens/room.js`、`public/js/ui/lobbyDiscovery.js`；测试 `test/lobby-capacity.test.js`（D034 用例）、`test/lobby.test.js`（观战席位与模糊测试）、`test/ui/lobby-discovery-ui.test.js`、`test/lobby-discovery.test.js`、`test/wire-codec.test.js`。
+
+## D035
+
+**生效：以 20 人版为主线合并原版 0.2.6；带宽层沿用分支实测过的参数，其余上游修复全部跟。**
+
+- 延续 [D033](#d033)：`origin` 是 20 人版 fork，`upstream` 是作者仓库，每次上游发版做一次 merge，
+  冲突逐条按本表裁决，**禁止整文件 ours/theirs**。流程见 [SYNC_20P.md](SYNC_20P.md)。
+- 上游 `488db49f` = v0.2.6（58 提交 / 93 文件，与分支双方都改 29 文件，实冲突 13 文件）。
+  上游本次**没有新增协议消息类型**（`shared/protocol.js` 未改），也未删除任何文件。
+- **WebSocket 压缩保留分支的 `WS_COMPRESSION`（D021），不采用上游 0.2.6 的 `WS_DEFLATE`**：
+  上游的结论来自单人会话，而 20 席房的广播正是「重复视图」流。实测 24 条 20 席 `m.public`
+  （1.10 MB JSON）：分支配置 76 KB（−93.1 %），上游配置 242 KB（−78.1 %）——**上游是 3.2 倍字节**；
+  且 `test/wire-pressure.test.js`（84 连接共享 0.8 Mbps）用分支配置通过、用上游配置失败。
+  `WS_DEFLATE` 保留为 `narrowDeflateOffer` 的比较上限并注明本分支不协商它。
+  上游新增的 `test/ws-compression.test.js` 改为断言 `WS_COMPRESSION` 的对应值（测试意图不变）。
+- **HTTP 压缩沿用上游 0.2.6 的实现**：`BROTLI_QUALITY` + `brotliParams`（按扩展名选 text/generic 模式并给
+  size hint）、`CompressCache.compressed`、`serveFile` 的 `opts.contentHash`。分支的**并发限流**
+  （同时最多 2 个，其余排队）保留，包住上游的 `compress()`；协商函数统一为上游名字 `pickEncoding`，
+  并保留分支的两条增强（out-of-range q 记 0；`identity;q=` 高于两者时为不压缩）与 `SP_HTTP_BROTLI=0` 回退开关。
+- **`serveBuffer` 统一为上游的对象签名** `(req,res,{body,hash|tag,type,cacheControl,key,cache,mtime,minBytes})`，
+  并保留分支的 Range / `Last-Modified` / `304` 语义：上游新增的 `assetViews.js` 与分支的
+  `runtimeCache.js`（D022）都必须能调用它。
+- **两套缓存机制并存、互不替代**：上游的**素材内容哈希**（`assetIndex.js` / `assetViews.js`，
+  `~<hash>` 路由与一年 immutable）解决素材 URL 失效；分支的**运行时模块图**（D022 的 `?rv=`）
+  解决代码/数据的整图固定。`static.js` 同时接受 `assetIndex`/`views` 与 `runtimeCache`。
+- **流量计数器与紧急保护并存**：上游 `traffic.js`（`/healthz?traffic=1`，仅环回/内网客户端）与
+  分支 D030 的 `bandwidthEmergency` 是两件事，`healthReport` 同时携带两者。
+- 上游新增的 `test/update-package.test.js` 的 fake checkout 需补上分支的 `PLAYER_TOOLS`
+  （`assets:pack` 依赖 `tools/asset-cache-pack.mjs`），与上次同步修 `test/package.test.js` 同一取向。
+- **频道优先级链不变**：`server/index.js` 仍先装配公告/`serverSettings`/`assetCache`/`bandwidthEmergency`，
+  再装配上游的 `assetIndex`/`views`/`traffic`；`createRequestHandler` 同时收到
+  `emergency`、`assetCache`、`announcements` 与上游的 `trustProxy`、`health.traffic`。
+- 生效阈值不变：容量特性在**开局实际占用席位 ≥ 6** 时才改变玩法；1–4 人（含独立模拟）行为必须与上游逐位一致。
+  `test/golden/*.json` 使用上游基准、分支不得修改——本次全量语料 9/9 通过且未 update。
+- 原因：上游把 v0.2.6 的绝大部分工作放在宿主带宽上，与本分支 D021/D022/D030 是**同一目标的两套手段**，
+  必须逐层判断谁更有效，而不是整块取一边；实测证明 WebSocket 一层分支的更省带宽，HTTP 一层上游的更完整。
+- 依据：本次合并记录 [2026-10-13-01](records/2026-10-13-01-upstream-v0.2.6-20p.md)；
+  验证 `test/golden.test.js` 全量 9/9 通过（未 update 上游基准）、容量与库存回归 240/240 通过。
