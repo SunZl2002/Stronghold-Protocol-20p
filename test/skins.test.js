@@ -135,3 +135,41 @@ test('协议层 isSkinId 与 isSkinSelection 防御校验', () => {
   assert.equal(isSkinSelection([]), false);
   assert.equal(isSkinSelection('not obj'), false);
 });
+
+/**
+ * The 20-player broadcast contract for skins (docs/SKINS.md): the choice is PUBLIC, so it rides in
+ * m.public.players[].skins — which means it must survive the compact v1 codec, and must cost a player who wears no
+ * skin exactly nothing. Both are load-bearing at 20 seats / 8 Hz, so they are pinned here rather than left implicit.
+ */
+test('20 席 m.public 的皮肤载荷：紧凑编解码往返一致，且无皮肤玩家零成本', async () => {
+  const { encodeWire, decodeWire } = await import('../shared/wireCodec.js');
+  const skinOf = (i) => `char_${100 + i}_op@summer#${i % 9}`;
+  const seat = (i, withSkin) => ({
+    playerId: `p_${i}`, seat: i, name: `博士${i}`, isBot: false, connected: true, alive: true, lp: 30 - i,
+    bandId: null, shopLevel: 3, boardCount: 6, ready: true, bonds: [], fieldId: i, status: null, autoplay: false,
+    ...(withSkin ? { skins: { [`chess_char_1_0${(i % 9) + 1}_a`]: skinOf(i) } } : {}),
+  });
+  const frame = (withSkin) => ({ t: 'm.public', phase: 'PREP', round: 5, players: Array.from({ length: 20 }, (_, i) => seat(i, withSkin)) });
+  const size = (o) => Buffer.byteLength(JSON.stringify(encodeWire(o, 's2c')));
+
+  // the choice and its chess key survive the round trip for all 20 seats
+  const back = decodeWire(encodeWire(frame(true), 's2c'), 's2c');
+  assert.equal(back.players.length, 20);
+  for (const [i, p] of back.players.entries()) {
+    const keys = Object.keys(p.skins || {});
+    assert.equal(keys.length, 1, `seat ${i} keeps exactly its own entry`);
+    assert.match(keys[0], /^chess_char_/, 'the key stays a CHESS id (the catalogue is keyed by operator id)');
+    assert.equal(p.skins[keys[0]], skinOf(i));
+  }
+
+  // a room where nobody wears a skin is byte-identical to one built without the field at all
+  const plain = decodeWire(encodeWire(frame(false), 's2c'), 's2c');
+  assert.ok(plain.players.every((p) => !Object.prototype.hasOwnProperty.call(p, 'skins')),
+    'no seat carries an empty skins object');
+  assert.equal(size(frame(false)), size({ t: 'm.public', phase: 'PREP', round: 5, players: frame(false).players.map(({ skins, ...rest }) => rest) }));
+
+  // what 20 skinned seats cost on the wire (kept as a number so a regression that bloats the payload is visible)
+  const extra = size(frame(true)) - size(frame(false));
+  assert.ok(extra > 0 && extra < 3000, `20 seats add ${extra} B per broadcast (expected under 3 KB)`);
+});
+
