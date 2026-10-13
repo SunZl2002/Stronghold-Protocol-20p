@@ -116,8 +116,11 @@ const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0
 
 function fakeCheckout(version) {
   const dir = tmp('co');
+  // assets:pack joins the fixture for the same reason as in package.test.js: PLAYER_NPM_SCRIPTS (tools/package.mjs)
+  // lists it for this branch's precache ZIP, and playerPackageProblems refuses a checkout whose package.json lacks one.
   const scripts = { start: 'node server/index.js', setup: 'node tools/setup.mjs', doctor: 'node tools/doctor.mjs', launch: 'node scripts/launch.mjs',
-    postinstall: 'node tools/vendor.mjs', vendor: 'node tools/vendor.mjs', assets: 'node tools/vendor.mjs && node tools/fetch-assets.mjs' };
+    postinstall: 'node tools/vendor.mjs', vendor: 'node tools/vendor.mjs', assets: 'node tools/vendor.mjs && node tools/fetch-assets.mjs',
+    'assets:pack': 'node tools/asset-cache-pack.mjs' };
   put(dir, 'package.json', JSON.stringify({ name: 'sp-test', version, main: 'server/index.js', scripts, dependencies: {} }));
   put(dir, 'package-lock.json', JSON.stringify({ name: 'sp-test', version, lockfileVersion: 3, packages: { '': { name: 'sp-test', version } } }));
   put(dir, 'server/index.js', "import './sim/rng.js';\n");
@@ -127,7 +130,11 @@ function fakeCheckout(version) {
   put(dir, 'public/index.html', '<!doctype html>\n');
   put(dir, 'data/chess.json', '{}\n');
   put(dir, 'data/assets.json', JSON.stringify({ chars: { a: { avatar: '/assets/char/a.png' } }, fonts: { css: '/fonts/fonts.css' } }));
-  for (const f of ['tools/setup.mjs', 'tools/vendor.mjs', 'tools/fetch-assets.mjs', 'tools/doctor.mjs', 'scripts/launch.mjs', 'tools/golden.mjs']) put(dir, f);
+  for (const f of ['tools/setup.mjs', 'tools/vendor.mjs', 'tools/fetch-assets.mjs', 'tools/doctor.mjs', 'scripts/launch.mjs', 'tools/golden.mjs',
+    // The capacity branch's player-tool set (tools/package.mjs PLAYER_TOOLS): stageProblems requires each of these in
+    // the checkout, so the fixture carries them like package.test.js's does.
+    'tools/announcements.mjs', 'tools/asset-cache-pack.mjs', 'tools/crop-board-atlas.mjs', 'tools/server-settings.mjs',
+    'tools/asset-cache/zip.mjs', 'tools/assets/network.mjs', 'tools/local-extract/extract.py']) put(dir, f);
   put(dir, 'README.md', '# readme\n');
   put(dir, '.gitignore', 'public/assets/\npublic/fonts/\ndata/local-assets.json\n');
   put(dir, 'public/assets/char/a.png', PNG);
@@ -198,9 +205,13 @@ test('a whole update: base zip v9.9.8 → --update v9.9.9 ships only what change
     assert.equal(got.get(`${FOLDER}/${MANIFEST_FILE}`).toString('utf8'), m);
     const listed = JSON.parse(m);
     assert.equal(listed.app, '9.9.9');
+    // The branch's extra PLAYER_TOOLS ship too (see fakeCheckout): announcements, the precache ZIP packer and its
+    // helpers, the board-atlas crop and the server-settings CLI.
     assert.deepEqual(Object.keys(listed.files).sort(), ['README.md', 'data/chess.json', 'package-lock.json', 'package.json', 'public/index.html',
-      'scripts/launch.mjs', 'server/index.js', 'server/new.js', 'server/sim/rng.js', 'shared/constants.js', 'tools/doctor.mjs',
-      'tools/fetch-assets.mjs', 'tools/setup.mjs', 'tools/vendor.mjs'], 'no art, no data/assets.json');
+      'scripts/launch.mjs', 'server/index.js', 'server/new.js', 'server/sim/rng.js', 'shared/constants.js',
+      'tools/announcements.mjs', 'tools/asset-cache-pack.mjs', 'tools/asset-cache/zip.mjs', 'tools/assets/network.mjs',
+      'tools/crop-board-atlas.mjs', 'tools/doctor.mjs', 'tools/fetch-assets.mjs', 'tools/local-extract/extract.py',
+      'tools/server-settings.mjs', 'tools/setup.mjs', 'tools/vendor.mjs'], 'no art, no data/assets.json');
     assert.deepEqual(listed.files['server/new.js'], dg('export const n = 1;\n'));
 
     // the player: the base extracted, a pack of their own, the update extracted over it, the server started

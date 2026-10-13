@@ -1,12 +1,18 @@
-// WebSocket permessage-deflate (server/http/websocket.js WS_DEFLATE, host bandwidth layer 0): a browser-like client
-// negotiates it with no server context takeover and a 2 KB server window, a large JSON frame goes out compressed, a
-// frame under the 1 KB threshold and a client without the extension get plain frames, and an offer that caps the server
-// window below ours is answered without compression instead of a refused handshake.
+// WebSocket permessage-deflate (server/http/websocket.js WS_COMPRESSION, host bandwidth layer 0): a browser-like client
+// negotiates it with the server's per-connection context kept and its 32 KiB window, a large JSON frame goes out
+// compressed, a frame under the 256 B threshold and a client without the extension get plain frames, and an offer that
+// caps the server window below the ceiling is answered without compression instead of a refused handshake.
+//
+// Adapted from upstream 0.2.6: its assertions pinned upstream's own WS_DEFLATE constants (no context takeover, a 2 KB
+// window, a 1 KB threshold). This branch negotiates WS_COMPRESSION instead — measured at 3.2× fewer wire bytes on a
+// 20-seat room's repeated m.public stream, and required by test/wire-pressure.test.js (84 sockets, 0.8 Mbps budget) —
+// so the constants come from WS_COMPRESSION here. The test's intent is unchanged: negotiation, compression,
+// the plain-frame paths and the narrow-offer guard.
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import WebSocket from 'ws';
-import { attachWebSocket, narrowDeflateOffer, WS_DEFLATE } from '../server/http/websocket.js';
+import { attachWebSocket, narrowDeflateOffer, WS_COMPRESSION, WS_DEFLATE } from '../server/http/websocket.js';
 import { startServer } from '../server/index.js';
 
 const BIG = JSON.stringify({ t: 'm.public', players: Array.from({ length: 200 }, (_, i) => ({ playerId: `p_${i % 4}`, name: '阿米娅', lp: 30, phase: 'PREP' })) });
@@ -48,15 +54,18 @@ describe('WebSocket permessage-deflate', () => {
   before(async () => { srv = await fakeServer(); });
   after(async () => { await srv.close(); });
 
-  test('negotiated with no server context takeover and a small server window; a large frame is compressed', async () => {
+  test('negotiated with the server context kept and its own server window; a large frame is compressed', async () => {
     const r = await receive(srv.url);
     assert.match(r.extensions, /permessage-deflate/);
-    assert.match(r.extensions, /server_no_context_takeover/);
-    assert.match(r.extensions, new RegExp(`server_max_window_bits=${WS_DEFLATE.serverMaxWindowBits}`));
+    // This branch keeps the context (WS_COMPRESSION), so the negotiation must NOT carry server_no_context_takeover.
+    assert.ok(!/server_no_context_takeover/.test(r.extensions), `context kept: ${r.extensions}`);
+    assert.match(r.extensions, new RegExp(`server_max_window_bits=${WS_COMPRESSION.serverMaxWindowBits}`));
     assert.deepEqual(r.msgs, [BIG, SMALL], 'the payloads arrive intact');
     assert.ok(BIG.length > 10000);
     assert.ok(r.read < BIG.length / 4, `compressed on the wire: ${r.read} bytes read for ${BIG.length} of payload`);
-    assert.equal(WS_DEFLATE.threshold, 1024);
+    assert.equal(WS_COMPRESSION.threshold, 256);
+    // The ceiling narrowDeflateOffer guards is narrower than what this server asks for, so the guard stays meaningful.
+    assert.ok(WS_DEFLATE.serverMaxWindowBits < WS_COMPRESSION.serverMaxWindowBits);
   });
 
   test('a client without the extension gets the same messages uncompressed', async () => {

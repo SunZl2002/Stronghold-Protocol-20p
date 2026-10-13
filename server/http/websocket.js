@@ -16,8 +16,22 @@ import { netOptionsFrom, lobbyOptionsFrom } from './config.js';
 /** Inbound WebSocket frame limit (DESIGN §8). */
 export const WS_MAX_PAYLOAD = 64 * 1024;
 
-// RFC 7692 raw DEFLATE. Retaining the outbound 32 KiB dictionary exploits repeated views; ws bounds global zlib work.
-// Incoming clients do not retain context, and maxPayload still bounds decompressed input. No custom browser inflater.
+// RFC 7692 raw DEFLATE — the coding this server actually negotiates (D021's compact wire).
+//
+// Upstream 0.2.6 ships `WS_DEFLATE` instead: 1 KB threshold, `serverNoContextTakeover`, a 2 KB window. Its comment
+// measures a *solo* session and concludes that larger windows gain nothing there. On this branch's traffic they do:
+// a 20-seat room's broadcast IS the repeated-view stream, so dropping the context and cutting the window costs
+// 3.2× the bytes on the wire. Measured with 24 coalesced 20-seat m.public views (1.10 MB of JSON):
+//
+//   WS_COMPRESSION (this, 32 KiB dictionary kept)  1.10 MB → 76 KB   (93.1 % saved)
+//   WS_DEFLATE     (upstream, no context, 2 KiB)   1.10 MB → 242 KB  (78.1 % saved)
+//
+// and `test/wire-pressure.test.js` (84 compact sockets sharing a 0.8 Mbps budget) passes with this config and fails
+// with upstream's. Keep this one; `test/ws-compression.test.js` is adapted to it (upstream's assertions pinned
+// upstream's own constants, not the protocol).
+//
+// Retaining the outbound 32 KiB dictionary exploits repeated views; ws bounds global zlib work. Incoming clients do
+// not retain context, and maxPayload still bounds decompressed input. No custom browser inflater.
 export const WS_COMPRESSION = Object.freeze({
   serverNoContextTakeover: false, clientNoContextTakeover: true,
   serverMaxWindowBits: 15, concurrencyLimit: 4, threshold: 256,
@@ -25,13 +39,15 @@ export const WS_COMPRESSION = Object.freeze({
 });
 
 /**
- * permessage-deflate (RFC 7692) for the JSON text frames. A message from 1 KB up (m.public, m.private, b.start, welcome
- * …) is compressed on its own — no context is kept from one message to the next (`serverNoContextTakeover`) — with a
- * 2 KB window and zlib memLevel 7, so a connection holds about 72 KB of zlib state; smaller frames (pong, ok) go out
- * as they are. Measured on a solo session (rounds 3–5, the server's own counters, traffic.js): 173 KB of payload →
- * 60 KB on the wire; replaying a session's frames with larger windows gained nothing on these messages. Browsers
- * negotiate it by themselves; a client that offers none gets plain frames. The inflated size of a client frame still
- * counts against WS_MAX_PAYLOAD.
+ * permessage-deflate (RFC 7692) for the JSON text frames. Kept for the record of upstream 0.2.6's configuration: a
+ * message from 1 KB up is compressed on its own — no context is kept from one message to the next
+ * (`serverNoContextTakeover`) — with a 2 KB window and zlib memLevel 7, so a connection holds about 72 KB of zlib
+ * state; smaller frames (pong, ok) go out as they are. Browsers negotiate compression by themselves; a client that
+ * offers none gets plain frames. The inflated size of a client frame still counts against WS_MAX_PAYLOAD.
+ *
+ * This branch does NOT negotiate it (see WS_COMPRESSION above for the measured difference); it is the ceiling
+ * `narrowDeflateOffer` compares an offer's `server_max_window_bits` against, since 11 bits is narrower than the 15
+ * this server asks for and ws would refuse the whole handshake for such an offer.
  */
 export const WS_DEFLATE = Object.freeze({
   threshold: 1024,
