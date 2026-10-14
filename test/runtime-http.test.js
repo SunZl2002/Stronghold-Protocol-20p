@@ -219,8 +219,12 @@ test('a hash segment of the wrong length still serves the file (stale page), and
     assert.equal(res.status, 200, `${why}: ${url}`);
     assert.equal(res.body.toString(), '<svg>asset</svg>', why);
   }
-  // a body reached through the lenient retry must never be cached as immutable
-  assert.match(String((await request(server, short)).headers['cache-control']), /no-cache/, 'the retry is not hash-backed');
+  // A body reached through the lenient retry must never be cached as IMMUTABLE: the URL is not backed by a hash we
+  // vouch for. It lands on the plain path's own policy instead (a day here, `no-cache` when no index vouches for the
+  // file), which is the point — a stale page gets its art back, without a stale URL pinning bytes for a year.
+  const stale = await request(server, short);
+  assert.ok(!/immutable/.test(String(stale.headers['cache-control'])), `the retry must not be immutable: ${stale.headers['cache-control']}`);
+  assert.ok(!/max-age=31536000/.test(String(stale.headers['cache-control'])), 'nor a year');
 
   // the retry serves the resolved file, never a guess: an absent one is still a 404
   for (const url of ['/assets/~0123456/nope.svg', '/assets/~abc/nope.svg', '/assets/nope.svg']) {

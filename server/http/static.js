@@ -107,8 +107,16 @@ export function createStaticHandler({ publicDir, dataDir, sharedDir, simDir = pa
     const rawDecoded = decoded;
     // /assets/~<hash>/x → /assets/x (the hash decides the cache policy below)
     const hashed = splitHashedPath(decoded);
-    const urlHash = hashed.hash;
+    let urlHash = hashed.hash;
     decoded = hashed.path;
+    // A page from an earlier build can ask for a hash this server no longer issues (a different length), and the strict
+    // rule above leaves such a segment in the path, where it names a directory that does not exist — every image and
+    // every audio file on that page then 404s, which reads as a broken feature rather than a stale tab. Drop it here,
+    // BEFORE the routes, so /assets and the extension-less /media route both get the file.
+    if (!urlHash) {
+      const lenientPath = stripHashLikeSegment(rawDecoded);
+      if (lenientPath) decoded = lenientPath;   // urlHash stays null ⇒ `no-cache`, never a year of immutable
+    }
     if (decoded === '/data.js') {
       const version = await runtime.version(decoded, query);
       if (version === false) { stale(req, res); return; }
