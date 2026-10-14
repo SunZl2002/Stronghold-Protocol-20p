@@ -14,6 +14,7 @@
 
 import { createStore, loadPref, savePref } from '../store.js';
 import { data } from '../data.js';
+import { chessSkinPortraitUrl, chessSkinAvatarUrl, chessPortraitUrl, chessAvatarUrl } from './assetUrls.js';
 
 export const SKINS_PREF = 'skins';
 /** Marks that this browser has already been seeded with the default skins (see installDefaultSkins). */
@@ -113,6 +114,34 @@ export function clearSkin(chessId) {
 
 /** The skin this browser picked for an operator, or null. */
 export const skinFor = (chessId) => skinsStore.get().entries[chessId] || null;
+
+const str = (v) => (typeof v === 'string' && v ? v : null);
+
+/**
+ * The half-body portrait a card should draw for a chess: the chosen skin's when it has one, else the operator's own
+ * — the same fallback `chessPortraitUrl` applies, so a caller only ever needs this one call.
+ *
+ * Reads the choice itself (`skinFor`), because every showing surface draws the LOCAL player's own operator: the
+ * 商店卡片, the roster and the detail panels are all client-side and use this browser's choices.
+ * @param {any} m manifest
+ * @param {any} chess chess.json record
+ * @param {string|null} [chessId] the id to read the choice by (defaults to the record's own)
+ */
+export function portraitFor(m, chess, chessId = null) {
+  const id = str(chessId) || str(chess?.chessId);
+  return chessSkinPortraitUrl(m, chess, id ? skinFor(id) : null) || chessPortraitUrl(m, chess);
+}
+
+/**
+ * The 180×180 avatar a roster tile should draw for a chess: the chosen skin's, else the operator's own.
+ * @param {any} m manifest
+ * @param {any} chess chess.json record
+ * @param {string|null} [chessId] the id to read the choice by (defaults to the record's own)
+ */
+export function avatarFor(m, chess, chessId = null) {
+  const id = str(chessId) || str(chess?.chessId);
+  return chessSkinAvatarUrl(m, chess, id ? skinFor(id) : null) || chessAvatarUrl(m, chess);
+}
 
 /**
  * Every skin of an operator (built-in full set).

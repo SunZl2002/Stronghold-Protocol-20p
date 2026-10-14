@@ -305,14 +305,17 @@ test('D038 商店立绘：选中皮肤时取皮肤立绘，未选中或缺立绘
   } };
   assert.equal(chessSkinPortraitUrl(m, withChar(), skinId), '/assets/char/skin_portrait/char_498_inside@kitchen#2.png');
 
-  // a skin without a portrait entry (upstream ships 131 of 174) yields no skin URL, so the operator's own art shows
+  // a skin with no portrait entry of its own (upstream ships 131 of 174) falls back to the operator's own portrait,
+  // so a card never goes blank; and with no operator art either it yields null rather than a URL the server lacks
   const mNoPortrait = { chars: {
     char_498_inside: {
       portrait: '/assets/char/portrait/char_498_inside.png',
       skins: { [skinId]: { name: '甜品大奖' } },
     },
   } };
-  assert.equal(chessSkinPortraitUrl(mNoPortrait, withChar(), skinId), null, 'skin without a portrait falls back');
+  assert.equal(chessSkinPortraitUrl(mNoPortrait, withChar(), skinId), '/assets/char/portrait/char_498_inside.png', 'skin without a portrait falls back');
+  const mBare = { chars: { char_498_inside: { skins: { [skinId]: { name: '甜品大奖' } } } } };
+  assert.equal(chessSkinPortraitUrl(mBare, withChar(), skinId), null, 'no operator art either: null, not a missing URL');
 
   // the fallback for the operator's own art tries the record's portrait id first (`…_1`) and then the charId, the
   // same two keys chessAvatarUrl uses
@@ -324,22 +327,29 @@ test('D038 商店立绘：选中皮肤时取皮肤立绘，未选中或缺立绘
   assert.equal(chessSkinPortraitUrl(mSelf, withChar({ assets: {} }), skinId), '/assets/char/portrait/char_498_inside.png', 'charId fallback');
 
   // The committed manifest is the real shape, and it now carries portraits for the skins whose art was fetched (I006
-  // step ①: `tools/fetch-skin-portraits.mjs` + the injector). Both sides of the rule are asserted against whatever is
-  // committed rather than a frozen count: with a portrait the resolver returns it, without one it returns null so the
-  // shop keeps drawing the operator's own art.
+  // step ①: `tools/fetch-skin-portraits.mjs` + the injector). The rule, checked against whatever is committed rather
+  // than a frozen count: a skin with its own portrait resolves to it; a skin without one falls back to the operator's
+  // own art (so a card never goes blank), which is null only when the manifest lacks that art too.
   let checked = 0;
   let withPortrait = 0;
+  let viaOperator = 0;
   for (const [charId, rec] of Object.entries(assetsData.chars)) {
     for (const [id, entry] of Object.entries(rec.skins || {})) {
       const chess = Object.values(chessData).find((c) => c.charId === charId);
       if (!chess) continue;
       checked++;
       const url = chessSkinPortraitUrl(assetsData, chess, id);
-      if (entry.portrait) { withPortrait++; assert.equal(url, entry.portrait, `${id} resolves to its own portrait`); }
-      else assert.equal(url, null, `${id} has no portrait and must not invent one`);
+      if (entry.portrait) {
+        withPortrait++;
+        assert.equal(url, entry.portrait, `${id} resolves to its own portrait`);
+      } else if (url) {
+        viaOperator++;
+        assert.ok(url.includes('/char/portrait/'), `${id} falls back to operator art, got ${url}`);
+      }
     }
   }
   assert.ok(checked > 100, `checked ${checked} installed skins against the committed manifest`);
   assert.ok(withPortrait > 0, `the manifest carries portraits (${withPortrait}) — fetch-skin-portraits + inject ran`);
+  assert.ok(viaOperator > 0, `and ${viaOperator} skins fall back to their operator's art`);
 });
 

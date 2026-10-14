@@ -52,27 +52,73 @@ export function chessPortraitUrl(m, chess) {
 }
 
 /**
+ * The URL an INSTALLED skin carries for one art kind, or null. Shared by the avatar and portrait resolvers: the
+ * manifest groups skins per OPERATOR (`chars[charId].skins[skinId]`), so the operator comes from the record and the
+ * skin id is passed in (`skinFor(chessId)` — the choice itself is per CHESS, ui/skins.js).
+ *
+ * Only the skin's OWN field counts. `inject-skins-assets` writes `avatar` for every skin it lists but `portrait`
+ * only for the files actually on disk (upstream ships a portrait for 131 of the 174), so an absent field yields null
+ * and the caller falls back to the operator's art — resolving that fallback here would make "this skin has no
+ * portrait" and "this skin is installed" indistinguishable.
+ */
+function skinArtUrl(m, chess, skinId, kind) {
+  const charId = str(chess?.charId);
+  const id = str(skinId);
+  if (!charId || !id) return null;
+  const installed = obj(obj(obj(obj(m)?.chars)?.[charId])?.skins)?.[id];
+  return installed ? str(installed[kind]) : null;
+}
+
+/** The operator's own art of one kind: the record's own id first (`…_1`), then its charId — chessAvatarUrl's rule. */
+function selfArtUrl(m, chess, kind) {
+  const chars = obj(obj(m)?.chars);
+  const selfId = str(kind === 'portrait' ? chess?.assets?.portrait : chess?.assets?.avatar) || str(chess?.charId);
+  return str(obj(chars?.[selfId])?.[kind]) || str(obj(chars?.[str(chess?.charId)])?.[kind]) || null;
+}
+
+/**
+ * 180×180 avatar of one skin of a chess record, or null — the mirror of chessSkinPortraitUrl. Every installed skin
+ * has an avatar (the injector always writes one), so a skin can be shown in the square roster tiles too.
+ * @param {any} m manifest
+ * @param {any} chess chess.json record (needs `charId`)
+ * @param {string|null|undefined} skinId the skin this chess wears, or null/absent for its own art
+ */
+export function chessSkinAvatarUrl(m, chess, skinId = null) {
+  const url = skinArtUrl(m, chess, skinId, 'avatar');
+  if (url) return url;
+  // a skin whose avatar field is missing (never written) still shows the operator's face rather than a glyph
+  return str(skinId) && obj(obj(obj(m)?.chars)?.[str(chess?.charId)])?.skins?.[str(skinId)] ? selfArtUrl(m, chess, 'avatar') : null;
+}
+
+/**
  * Half-body portrait of one skin of a chess record (D038), or null.
  *
  * The manifest groups skins per OPERATOR (`chars[charId].skins[skinId]`, written by
  * tools/inject-skins-assets.mjs) while the choice is per CHESS (`{ [chessId]: skinId }`, ui/skins.js) — so the
- * operator is resolved from the record and the skin id is passed in (`skinFor(chessId)`). Only an installed skin
- * that actually carries a portrait URL resolves: upstream ships a portrait for 131 of the 174 skins, and
- * `inject-skins-assets` writes the field only for files that are really on disk, so a skin without one yields null
- * and the caller falls back to the operator's own portrait (`chessPortraitUrl`). Pure: it reads the manifest only.
+ * operator is resolved from the record and the skin id is passed in (`skinFor(chessId)`).
+ *
+ * `inject-skins-assets` writes a skin's `portrait` only for files really on disk, and upstream ships one for 131 of
+ * the 174 skins. A skin without one falls back to the operator's own portrait — but ONLY when the manifest actually
+ * has that art for this record (a manifest built without the operator's portraits must answer null so the caller
+ * keeps its own fallback instead of being handed a URL the server cannot serve). No choice, an unknown skin, or an
+ * operator with no art all yield null. Pure: it reads the manifest only.
  * @param {any} m manifest
  * @param {any} chess chess.json record (needs `charId` and `assets.portrait`)
  * @param {string|null|undefined} skinId the skin this chess wears, or null/absent for its own art
  */
 export function chessSkinPortraitUrl(m, chess, skinId = null) {
-  const charId = str(chess?.charId);
   const id = str(skinId);
-  if (!charId || !id) return null;
-  const installed = obj(obj(obj(obj(m)?.chars)?.[charId])?.skins)?.[id];
-  // when even the operator's own portrait id (`char_498_inside_1`) has no entry, fall back to `charId`, the same
-  // fallback chessAvatarUrl applies
-  const selfId = str(chess?.assets?.portrait) || charId;
-  return str(installed?.portrait) || str(obj(obj(obj(m)?.chars)?.[selfId])?.portrait) || null;
+  const charId = str(chess?.charId);
+  if (!id || !charId) return null;   // no choice: the caller draws the operator's own art itself
+  const rec = obj(obj(obj(m)?.chars)?.[charId]);
+  const skinMap = obj(rec?.skins);
+  // A manifest that lists skins for this operator but not this id is a stale choice (another season's preset, an
+  // uninstalled skin): answer null so the caller keeps its own fallback. A manifest with no skin map at all is the
+  // ordinary "operator wears its own art" case, which resolves to that art below.
+  if (skinMap && !obj(skinMap[id])) return null;
+  // installed (or no skin catalogue to check against): its own portrait, else the operator's own so a card that
+  // drew the skin's art before a re-fetch never goes blank
+  return str(obj(skinMap?.[id])?.portrait) || selfArtUrl(m, chess, 'portrait');
 }
 
 /** Skill icon of a chess record (manifest `skills[iconId]`, else the empty skill sprite). */

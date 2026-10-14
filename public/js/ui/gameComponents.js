@@ -9,6 +9,7 @@ import { t as tr } from '../../../shared/i18n.js';
 import {
   uiUrl, chessAvatarUrl, chessPortraitUrl, itemIconUrl, tokenAvatarUrl, enemyIconUrl, bondIconUrl, bandIconUrl,
 } from './assetUrls.js';
+import { avatarFor } from './skins.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -115,7 +116,9 @@ export function UnitThumb({ kind = 'chess', id, golden, size = 'md', tier, showT
   if (kind === 'chess') {
     const c = rec || data.lookup('chess', id);
     si = rec && typeof rec.standInFor === 'string' && rec.standInFor ? rec : null;
-    src = chessAvatarUrl(m, c);
+    // 干员皮肤 (docs/SKINS.md): the chosen skin's avatar, and the operator's own when the skin has none or none is
+    // chosen. A 替补 stand-in is a DIFFERENT operator, so it keeps its own art — a skin belongs to the operator.
+    src = si ? chessAvatarUrl(m, c) : avatarFor(m, c);
     name = c?.name || '';
     t = t ?? c?.tier;
     golden = golden ?? !!c?.isGolden;
