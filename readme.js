@@ -411,8 +411,46 @@
 //         不要改实现（把断言目标从 WS_DEFLATE 换回 WS_COMPRESSION，测试意图不变）。
 //       · **不要为了让它变绿去调阈值**。要改必须先给出同机 A/B 实测 + 该测试结果。
 //
-// 另：本机 `git push` 与 `git stash` 会被沙箱拦截（子进程创建失败，报 error launching git），
-// 推送请在普通 CMD / GitHub Desktop 里做；`git fetch` 不受影响。
+// ============================================================================================
+// 【本机环境问题·已解决】git push / git stash 报 "error launching git" 的真实原因
+// ============================================================================================
+//
+// 症状：`git push` 和 `git stash push` 失败，报
+//   error launching git:  Windows Installer SDK
+// 而 `git fetch` / `git ls-remote` / `git commit` / `git send-pack` / `git receive-pack`
+// 全部正常。**这个报错与网络、认证、仓库、以及任何沙箱都无关**（早先一版本文件把它归因给
+// 沙箱，是错的，已改正）。
+//
+// 根因：`C:\Program Files\Git\cmd\git.exe` 这个 **46 KB 的包装器在本机启动失败**。
+// `git push` 与 `git stash` 是仅有的两个「需要再启动一次 git 自己」的子命令
+// （push 要用 `git-receive-pack` 走远端通道，stash 要再跑 `git`），它们按 PATH 找到的是
+// `Git\cmd\git.exe`（`where git` 的第一个），那个包装器起不来 → "error launching git"。
+// 其余子命令都是进程内执行或直接调具体 helper，所以不受影响。
+//
+// A/B 实测（本地裸仓库，完全排除网络与认证）：
+//   PATH 原样（Git\cmd 优先）          → ❌ error launching git
+//   PATH 前置 Git\mingw64\bin          → ✅ 推送成功
+//   PATH 只留 Git\mingw64\bin          → ✅ Everything up-to-date
+//
+// **本机推送的命令写法**（每次推送都带上，直到重装 Git 或改掉系统 PATH 顺序）：
+//
+//   set "PATH=C:\Program Files\Git\mingw64\bin;%PATH%" && cd /d E:\zmd\20p-sync && git push origin capacity-20p
+//
+// 彻底修复（二选一）：
+//   ① 重装 Git for Windows（推荐，恢复 cmd\ 包装器与 libexec 布局）；
+//   ② 把系统环境变量里的 `C:\Program Files\Git\mingw64\bin` 移到 `C:\Program Files\Git\cmd`
+//      **前面**，让所有程序（含 GitHub Desktop / TortoiseGit / CI 脚本）都不再依赖那个包装器。
+//
+// 另外两个本机环境事实（排查时顺带确认）：
+//   · 本机 PATH 里 `C:\Program Files\TortoiseGit\bin` 排在 Git for Windows 之前，但 TortoiseGit
+//     只带 DLL（gitdll.dll 等）**没有 git.exe**，所以它不是这个问题的原因（已排除）。
+//   · `http.sslverify=false` 是**系统级**配置，每次 HTTPS 操作都会打印
+//     「TLS certificate verification has been disabled!」安全警告。若非公司代理自签证书所必需，
+//     建议 `git config --system --unset http.sslverify` 关掉——它会削弱中间人防护。
+//   · 凭据方面：系统里存的 GitHub 凭据 target 是 `api.github.com` 域，与 git push 的
+//     `github.com` 域不匹配，所以 GCM 会转为交互提示；在无 tty 的环境里表现为
+//     `could not read Username`。人工推送时按提示登录一次即可（或用 PAT 当密码）。
+//     网络侧还出现过对 push 的 `502 Bad Gateway`（读操作正常、写被拒），关掉代理/加速器后恢复。
 
 // ============================================================================================
 // 六、本文件自身的说明
