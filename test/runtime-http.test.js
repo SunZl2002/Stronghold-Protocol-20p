@@ -194,3 +194,49 @@ test('encoding weights/exclusions and URL resolution honor fallback and same-ori
   assert.equal(resolve('/api/asset-cache/catalog'), '/api/asset-cache/catalog');
   assert.equal(runtimeCacheMode(pinned), 'default'); assert.equal(runtimeCacheMode('/data/config.json?rv=bad'), 'no-cache');
 });
+
+/**
+ * A stale tab must not lose every image.
+ *
+ * The hash segment is `~` + exactly 16 lower-case hex (shared/assetPaths.js). A page from an earlier build can ask
+ * for a different length — a browser was seen requesting `~99367b3` while the running server issued
+ * `~5328a27f599367b3` — and the strict rule then leaves the segment in the path, where it names a directory that does
+ * not exist: a 404 for every image, which reads as a broken feature rather than a stale page (`serveStatic`'s lenient
+ * retry, `stripHashLikeSegment`).
+ */
+test('a hash segment of the wrong length still serves the file (stale page), and only for a file that exists', async (t) => {
+  const { server } = await fixture(t);
+  const good = '/assets/~0123456789abcdef/art.svg';
+  const short = '/assets/~0123456/art.svg';          // an older build's shorter hash
+  const odd = '/assets/~abc/art.svg';
+
+  const base = await request(server, '/assets/art.svg');
+  assert.equal(base.status, 200);
+  assert.equal(base.body.toString(), '<svg>asset</svg>');
+
+  for (const [url, why] of [[good, 'a well-formed hash'], [short, 'a shorter hash'], [odd, 'an odd one']]) {
+    const res = await request(server, url);
+    assert.equal(res.status, 200, `${why}: ${url}`);
+    assert.equal(res.body.toString(), '<svg>asset</svg>', why);
+  }
+  // a body reached through the lenient retry must never be cached as immutable
+  assert.match(String((await request(server, short)).headers['cache-control']), /no-cache/, 'the retry is not hash-backed');
+
+  // the retry serves the resolved file, never a guess: an absent one is still a 404
+  for (const url of ['/assets/~0123456/nope.svg', '/assets/~abc/nope.svg', '/assets/nope.svg']) {
+    assert.equal((await request(server, url)).status, 404, url);
+  }
+  // and it never walks out of the mount. Only an ENCODED `..` survives to the server (a plain one is normalised away
+  // by the URL parser before the request exists), which is exactly the case the retry's segment guard must refuse.
+  // The refusal is a 403 whose body is the error page — so check that no FILE CONTENT came back, not the status text.
+  for (const url of ['/assets/~0123456/%2e%2e/index.html', '/assets/~abc/%2e%2e/%2e%2e/etc/passwd', '/assets/~0123456/%2e%2e%5cindex.html']) {
+    const res = await request(server, url);
+    assert.ok(res.status === 403 || res.status === 404 || res.status === 400, `${url} answered ${res.status}`);
+    const body = res.body.toString();
+    assert.ok(!body.includes('<svg>asset</svg>'), `${url} served the asset`);
+    assert.ok(!body.includes('<link rel="stylesheet" href="/css/test.css">'), `${url} served the page`);
+  }
+  // a non-hashed root, and a segment that is not the first one, keep the old behaviour
+  assert.equal((await request(server, '/data/~0123456/config.json')).status, 404);
+  assert.equal((await request(server, '/assets/x/~0123456/art.svg')).status, 404);
+});

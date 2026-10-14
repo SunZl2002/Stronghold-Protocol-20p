@@ -18,7 +18,10 @@
 //     /assets/~<hash>/…, /fonts/~<hash>/…, /media/~<hash>/… → the same files: the content-hash segment
 //                (shared/assetPaths.js) is stripped. A hash that names the file's current bytes (assetIndex.js
 //                urlHashOk: its own hash, or its Spine model's) answers `immutable` for a year; any other hash —
-//                an old page, a URL derived from another file's — the current file with `no-cache`
+//                an old page, a URL derived from another file's — the current file with `no-cache`. A segment the
+//                STRICT rule does not recognise (not exactly 16 lower-case hex, e.g. a page from a build that issued
+//                shorter hashes) is retried without it after the plain path 404s, so a stale tab keeps its art
+//                instead of losing every image (stripHashLikeSegment)
 //     /data/assets.json, /data/local-assets.json → the served manifests (assetViews.js: every art URL with its
 //                content-hash segment; no-cache, the ETag of the view) once the asset index is ready, the files as
 //                they are before that or without an index
@@ -36,7 +39,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { MEDIA_PREFIX } from '../../shared/media.js';
-import { splitHashedPath } from '../../shared/assetPaths.js';
+import { splitHashedPath, HASHED_ROOTS } from '../../shared/assetPaths.js';
 import { ROOT, noopLog } from './config.js';
 import { sendError, sendJson } from './common.js';
 import { MIME, CompressCache, serveBuffer, serveFile } from './files.js';
@@ -100,6 +103,8 @@ export function createStaticHandler({ publicDir, dataDir, sharedDir, simDir = pa
       sendError(req, res, 400, '请求地址无效 · Bad request');
       return;
     }
+    // Kept for the lenient retry below: a 404 must be able to re-resolve the file from the ORIGINAL path.
+    const rawDecoded = decoded;
     // /assets/~<hash>/x → /assets/x (the hash decides the cache policy below)
     const hashed = splitHashedPath(decoded);
     const urlHash = hashed.hash;
@@ -185,6 +190,24 @@ export function createStaticHandler({ publicDir, dataDir, sharedDir, simDir = pa
         res.writeHead(200, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-cache', 'Content-Length': EMPTY_LOCAL_ART.length });
         res.end(req.method === 'HEAD' ? undefined : EMPTY_LOCAL_ART);
       } else if (e && (e.code === 'ENOENT' || e.code === 'ENOTDIR' || e.code === 'EISDIR' || e.code === 'ENAMETOOLONG')) {
+        // A stale page's hash segment (a different length than this build issues) names a directory that does not
+        // exist. Retry once with any `~…` first segment dropped, so an older page keeps its art instead of losing
+        // every image — see stripHashLikeSegment. The response is no-cache: this URL is not backed by a hash we know.
+        const lenient = stripHashLikeSegment(rawDecoded);
+        if (lenient && lenient !== decoded) {
+          const m2 = mounts.find((m) => lenient.startsWith(m.prefix) || lenient === m.prefix.slice(0, -1)) || mounts[mounts.length - 1];
+          const segs2 = (lenient.length > m2.prefix.length ? lenient.slice(m2.prefix.length) : '').split('/').filter((s) => s.length > 0);
+          if (!segs2.some((s) => s === '..' || s === '.' || s.startsWith('.'))) {
+            const abs2 = path.join(m2.dir, ...segs2);
+            if (abs2 === m2.dir || abs2.startsWith(m2.dir + path.sep)) {
+              const st2 = await fsp.stat(abs2).catch(() => null);
+              if (st2 && st2.isFile()) {
+                await serveFile(req, res, abs2, st2, m2.name, segs2, query, gzipCache, log, { cacheControl: 'no-cache' });
+                return;
+              }
+            }
+          }
+        }
         sendError(req, res, 404, '页面不存在 · Not found', decoded.length <= 200 ? decoded : '');
       } else if (e && (e.code === 'EACCES' || e.code === 'EPERM')) {
         sendError(req, res, 403, '禁止访问 · Forbidden');
@@ -219,4 +242,34 @@ export function createStaticHandler({ publicDir, dataDir, sharedDir, simDir = pa
     const opts = indexed ? hashedFileOpts(assetIndex, segments.join('/'), stat, urlHash) : (urlHash ? { cacheControl: 'no-cache' } : {});
     await serveFile(req, res, absPath, stat, mount.name, segments, query, gzipCache, log, opts);
   };
+}
+
+/**
+ * Drop a `~<something>` first segment from an asset URL, whatever its length or case.
+ *
+ * `splitHashedPath` (shared/assetPaths.js) strips only a WELL-FORMED segment — exactly `~` + 16 lower-case hex — and
+ * leaves anything else in the path, which is right for building and validating URLs. But a browser holding an older
+ * page can ask for a hash this server no longer issues: the same file's hash may differ in length after a rebuild (a
+ * stale tab asked for `~99367b3` while the running server issues `~5328a27f599367b3`). A segment the strict rule does
+ * not recognise stays in the path, names a directory that does not exist, and answers 404 — so every image on that
+ * page fails, which reads as a broken feature rather than a stale tab.
+ *
+ * Used ONLY as a retry after the plain path already answered 404 (see the catch in `serveStatic`), so a real file
+ * whose name happens to start with `~` is still served first and this can never shadow it.
+ * @param {string} path the ORIGINAL decoded path (before `splitHashedPath` touched it)
+ * @returns {string|null} the path without that segment, or null when there is nothing to drop
+ */
+export function stripHashLikeSegment(path) {
+  const p = String(path ?? '');
+  for (const root of HASHED_ROOTS) {
+    if (!p.startsWith(root)) continue;
+    const slash = p.indexOf('/', root.length);
+    if (slash < 0) break;
+    const seg = p.slice(root.length, slash);
+    // hash-like: `~`, then ASCII letters/digits only, ending in a hex digit
+    if (!/^~[0-9A-Za-z]+$/.test(seg) || !/[0-9a-fA-F]$/.test(seg)) break;
+    const rest = p.slice(slash + 1);
+    return rest ? root + rest : null;   // never turn "/assets/~x//" into the bare root
+  }
+  return null;
 }
