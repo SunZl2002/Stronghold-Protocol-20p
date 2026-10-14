@@ -241,44 +241,49 @@ test('D037 默认皮肤：每个有模型的干员都装上一款，且只装在
     assert.ok(!c.isGolden, `${chessId} is not the golden form`);
     assert.ok(!c.isHidden, `${chessId} is not hidden`);
     assert.ok(!c.isDiy, `${chessId} is not a 自选 slot`);
-    // and the skin is one of that operator's, with its model installed
-    assert.ok(assetsData.chars[c.charId]?.skins?.[skinId], `${skinId} is installed for ${c.charId}`);
-    assert.ok(assetsData.chars[c.charId].skins[skinId].spine, `${skinId} has a Spine model on this server`);
+    // and the skin is one of that operator's, with SOME art installed (a model, or at least a portrait — see below)
+    const picked = assetsData.chars[c.charId]?.skins?.[skinId];
+    assert.ok(picked, `${skinId} is installed for ${c.charId}`);
+    assert.ok(picked.spine || picked.portrait || picked.avatar, `${skinId} has art on this server`);
   }
 
-  // every operator that HAS an installed skin is dressed (no gaps)
+  // every operator that HAS an installed skin is dressed (no gaps). "Installed" means any art at all, not only a Spine
+  // model: 浊心斯卡蒂's two skins ship portraits but no model upstream, and skipping her left a visible operator on its
+  // own art while the picker offered skins that would have shown.
   const dressedChars = new Set(entries.map(([chessId]) => chessData[chessId].charId));
-  const withInstalled = Object.entries(assetsData.chars)
-    .filter(([, rec]) => Object.values(rec.skins || {}).some((s) => s.spine))
-    .map(([charId]) => charId);
-  assert.equal(withInstalled.length, 114, 'the committed manifest has 114 operators with a model');
+  const hasArt = (rec) => Object.values(rec.skins || {}).some((s) => s.spine || s.portrait || s.avatar);
+  const withInstalled = Object.entries(assetsData.chars).filter(([, rec]) => hasArt(rec)).map(([charId]) => charId);
+  assert.ok(withInstalled.length >= 115, `the committed manifest covers ${withInstalled.length} operators`);
   for (const charId of withInstalled) {
     // an operator may have no eligible chess (all golden / hidden); only require it when one exists
     const eligible = Object.values(chessData).some((c) => c.charId === charId && !c.isGolden && !c.isHidden && !c.isDiy);
     if (eligible) assert.ok(dressedChars.has(charId), `${charId} is dressed`);
   }
 
-  // an operator with no installed model is absent
-  const none = Object.entries(assetsData.chars).find(([, rec]) => !Object.values(rec.skins || {}).some((s) => s.spine));
+  // an operator with no installed art is absent
+  const none = Object.entries(assetsData.chars).find(([, rec]) => !hasArt(rec));
   if (none) {
     const [charId] = none;
     assert.ok(!dressedChars.has(charId), `${charId} has no installed skin and stays plain`);
   }
 
-  // The default never picks a skin whose SPINE MODEL is absent from the manifest — that is the rule, and it is
-  // checked against whatever the committed manifest currently says rather than a frozen list: the source gains files
-  // over time (char_4087_ines@boc#8 arrived after a later retry), so a hard-coded "still missing" list goes stale.
+  // The default picks a model when one exists, and otherwise the best art there is — never a skin with no art at all,
+  // because that would change nothing visible. Checked against whatever the committed manifest says rather than a
+  // frozen list: the source gains files over time (char_4087_ines@boc#8 arrived after a later retry).
   for (const [chessId, skinId] of entries) {
     const charId = chessData[chessId].charId;
-    assert.ok(assetsData.chars[charId].skins[skinId].spine, `${skinId} is a default only because its model is here`);
+    const s = assetsData.chars[charId].skins[skinId];
+    assert.ok(s && (s.spine || s.portrait || s.avatar), `${skinId} is a default only because it has some art`);
+    if (!s.spine) assert.ok(s.portrait || s.avatar, `${skinId} has no model, so it must at least show art`);
   }
-  const noModel = [];
+  // a skin with NO model may still be a default when it has a portrait or avatar (浊心斯卡蒂), but a skin with no art
+  // at all must never be: choosing it would change nothing visible
+  const noArt = [];
   for (const [charId, rec] of Object.entries(assetsData.chars)) {
-    for (const [skinId, s] of Object.entries(rec.skins || {})) if (!s.spine) noModel.push(skinId);
+    for (const [skinId, s] of Object.entries(rec.skins || {})) if (!s.spine && !s.portrait && !s.avatar) noArt.push(skinId);
   }
-  // whatever is still modelless must not be a default (nothing else is asserted about the count: it is data)
-  for (const skinId of noModel) {
-    assert.ok(!Object.values(map).includes(skinId), `${skinId} has no model and must not be a default`);
+  for (const skinId of noArt) {
+    assert.ok(!Object.values(map).includes(skinId), `${skinId} has no art at all and must not be a default`);
   }
 });
 

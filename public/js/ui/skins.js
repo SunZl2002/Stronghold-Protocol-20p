@@ -62,12 +62,18 @@ function readStored() {
 }
 
 /**
- * 默认皮肤 (D037): every operator whose skin has an installed model wears it. Keyed by CHESS id — the catalogue and
+ * 默认皮肤 (D037): every operator whose skin has SOME installed art wears it. Keyed by CHESS id — the catalogue and
  * the manifest are grouped by OPERATOR id, and a choice is per chess (docs/SKINS.md). Only chess that may wear a skin
  * take one: never a golden / hidden / 自选 record, which is why this mirrors `isLoadoutSlot`.
  *
- * Prefers a skin whose Spine model is actually on this server: a source-missing skin (3 of the 174 today) still gets
- * a picker entry, but it would fall back to the operator's own model, so a dressed operator would look undressed.
+ * Prefers a skin with a Spine model: that is what the battlefield draws, so it is the one that makes a dressed
+ * operator look dressed everywhere. Falls back to a skin that has only a PORTRAIT or AVATAR — 浊心斯卡蒂's two skins
+ * ship their portraits but no model upstream, and picking nothing left her on her own art while the picker offered
+ * skins that would have shown (the report "有的干员明明有皮肤 但是还是默认立绘"). With no art at all the operator is
+ * skipped, because choosing it would change nothing visible.
+ *
+ * A portrait/avatar-only pick keeps the operator's own Spine model in battle: `spineEntry` falls back when the skin
+ * has no `spine`, so the field shows the base model and the cards show the skin. That is the honest best available.
  * @param {typeof data} [store] the data store to read (tests pass their own; the app uses the singleton)
  * @returns {Record<string, string>} `{ [chessId]: skinId }`
  */
@@ -81,7 +87,10 @@ export function defaultSkins(store = data) {
   for (const [charId, list] of Object.entries(cat.chars)) {
     if (!Array.isArray(list) || !list.length) continue;
     const installed = assets.chars[charId]?.skins || {};
-    const pick = list.find((s) => installed[s.id]?.spine) || null;
+    const pick = list.find((s) => installed[s.id]?.spine)
+      || list.find((s) => installed[s.id]?.portrait)
+      || list.find((s) => installed[s.id]?.avatar)
+      || null;
     if (!pick) continue; // nothing installed for this operator: leave it on its own model
     for (const c of chessList) {
       if (c.charId !== charId || c.isGolden || c.visible === false || c.isHidden || c.isDiy) continue;
@@ -105,20 +114,36 @@ export function defaultSkins(store = data) {
 export function installDefaultSkins() {
   // all three, because the default map is keyed by chess id: the catalogue and the manifest alone yield nothing
   if (data.status('skins') !== 'ready' || data.status('assets') !== 'ready' || data.status('chess') !== 'ready') return false;
+  const wanted = defaultSkins();
   const already = loadPref(SKINS_DEFAULT_PREF, false);
   if (already) {
-    // Seeded on an earlier run. The AUTO MARKER may still be missing — it arrived after the first seed, so every browser
-    // that was already dressed has none, and without it `skinFor` cannot tell a seeded skin from a hand-picked one: the
-    // dress switch then hides nothing and looks broken (the reported "开关一键装备皮肤没有变化"). Rebuild it from the
-    // entries already stored, which changes no choice — only who they are attributed to.
+    // Seeded on an earlier run, but the dress is still a moving target: a later build covers MORE operators than the
+    // one that seeded this browser (浊心斯卡蒂's skins gained a portrait fallback, and the asset set grows), and a
+    // stored entry can never come back once the picker's default changed. Top up additively — never overwrite, never
+    // delete — so an operator the dress newly covers gets its skin without disturbing a single existing choice.
+    const add = {};
+    for (const [chessId, skinId] of Object.entries(wanted)) {
+      if (!Object.hasOwn(skinsStore.get().entries, chessId)) add[chessId] = skinId;
+    }
+    if (Object.keys(add).length) {
+      const auto = readAutoSeeded();
+      for (const chessId of Object.keys(add)) auto.add(chessId);
+      writeAutoSeeded(auto);
+      setSkins({ ...skinsStore.get().entries, ...add });
+      return true;
+    }
+    // The AUTO MARKER may still be missing — it arrived after the first seed, so every browser that was already dressed
+    // has none, and without it `skinFor` cannot tell a seeded skin from a hand-picked one: the dress switch then hides
+    // nothing and looks broken (the reported "开关一键装备皮肤没有变化"). Rebuild it from the entries already stored,
+    // which changes no choice — only who they are attributed to.
     if (!autoSeededCache.size) {
       const auto = new Set();
-      for (const chessId of Object.keys(defaultSkins())) if (Object.hasOwn(skinsStore.get().entries, chessId)) auto.add(chessId);
+      for (const chessId of Object.keys(wanted)) if (Object.hasOwn(skinsStore.get().entries, chessId)) auto.add(chessId);
       if (auto.size) writeAutoSeeded(auto);
     }
     return false;
   }
-  const seeded = defaultSkins();
+  const seeded = wanted;
   savePref(SKINS_DEFAULT_PREF, true);
   // which chess take their skin from the dress rather than from the player: an existing pick is the player's, and is
   // never marked (so 一键装备 off never hides it)
