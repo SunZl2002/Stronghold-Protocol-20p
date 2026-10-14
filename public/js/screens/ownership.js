@@ -31,7 +31,7 @@ export function useOwnershipRoster(ready) {
 export function OwnCard({ m, chess, backups, owned, onToggle }) {
   const si = standInSummary(chess, backups);
   // subscribe to this chess's skin: the switch re-renders on the ownership store, not on a skin change
-  const skinId = useSkin(chess.chessId);
+  const { skinId } = useSkin(chess.chessId);
   const skill = si?.skill;
   const slot = skill && Number.isInteger(skill.index) ? `S${skill.index + 1}` : '';
   const label = owned ? t('{name}：持有', { name: chess.name }) : t('{name}：未持有，由 {standIn} 上场', { name: chess.name, standIn: si?.name || t('替补干员') });

@@ -275,13 +275,21 @@ export function bumpSkinsPolicy() {
   for (const fn of [...policySubs]) { try { fn(policyVersion); } catch { /* a listener must not break the bump */ } }
 }
 
-/** Re-render on every `bumpSkinsPolicy` (the settings store calls it when the switch moves). */
+/**
+ * Subscribe to a switch moving, and return a token that changes with it.
+ *
+ * Returning the token (rather than forcing a render from a listener) is what makes the subscription work: `useStore`
+ * re-renders when its SELECTED VALUE differs, and the reducer's dispatcher keeps the same identity across renders.
+ * A hook that only forced a re-render therefore looked subscribed while its value never changed — which is why the
+ * detail panel, already open, ignored both switches until something else re-rendered it.
+ */
 function useSettingsVersion() {
-  const [, force] = useReducer((c) => c + 1, 0);
+  const [version, force] = useReducer((c) => c + 1, 0);
   useLayoutEffect(() => {
     policySubs.add(force);
     return () => policySubs.delete(force);
   }, []);
+  return version;
 }
 
 /**
@@ -299,19 +307,22 @@ function useSettingsVersion() {
  */
 export function useSkin(chessId) {
   const id = str(chessId);
+  // Both are subscriptions and both must be live: `entries` for this chess's own choice, `version` for either global
+  // switch. The version is what makes an ALREADY-OPEN card follow the switches — a switch can move without changing
+  // the resolved skin for this chess (it may be plain before and after), and a hook only re-renders when something it
+  // read during the render differs. Returning both keeps each binding part of the rendered output.
   const entries = useStore((s) => s.entries, shallowEqual, skinsStore);
-  // subscribed, not read once: flipping EITHER switch must repaint what is already on screen
-  useSettingsVersion();
-  // resolved through `skinFor` rather than re-deriving it here: one place decides what is worn (the view switch, then
-  // the dress switch on top), so a component and a plain caller can never disagree about the same chess
-  void entries;
-  return id ? skinFor(id) : null;
+  const version = useSettingsVersion();
+  return { skinId: id ? skinFor(id) : null, stored: entries[id] ?? null, version };
 }
 
-/** The global switch alone, as a subscription (a component that shows no per-operator art still needs to repaint). */
+/**
+ * The global switch alone, as a subscription. `{ visible, version }` — the same shape `useSkin` returns, and for the
+ * same reason: the version is what re-renders a component whose `visible` happens to be unchanged already.
+ */
 export function useSkinsVisible() {
-  useSettingsVersion();
-  return skinsVisible();
+  const version = useSettingsVersion();
+  return { visible: skinsVisible(), version };
 }
 
 /**

@@ -39,7 +39,7 @@ import { html, Icon, TierChip, MicroLabel, Button, confirmDialog, useTicker } fr
 import { Img, RichText, UnitThumb, BondGlyph, GIcon, diyToken } from './gameComponents.js';
 import { attackInterval, rangeGridBox, fmtNum, tileKey, chessLoadout, nextThreshold, bondTier, briefingBondTip, pieceBondIds, grantedBonds, morphPairings, ownStandIn, standInOf, standInLoadout, standInLabel, standInTip, standInForText, ownDiyRecord, ownDiyPick, diyRecordFor, pickGetter, unitPick, unitCultivation } from './gameLogic.js';
 import { chessPortraitUrl, chessSkinPortraitUrl, skillIconUrl, skillRecordIconUrl, profIconUrl, subProfIconUrl, itemIconUrl, enemyIconUrl, tokenAvatarUrl, factionIconUrl, uiUrl, moduleTypeIconUrl } from './assetUrls.js';
-import { skinFor, useSkin } from './skins.js';
+import { useSkin } from './skins.js';
 import { abilityRows } from './abilityLines.js';
 import { data } from '../data.js';
 import { attackRangeGrid } from '../../../shared/loadoutRecord.js';
@@ -385,12 +385,14 @@ function skillTextNote(sk) {
   return note ? html`<p class="dhint dhint--rule" data-skill-note=${sk.skillId}><${Icon} name="info" />${t(note)}</p>` : null;
 }
 
-export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bonds, offBonds = null, loadout, onBond, live = null, hint = null, unitItems = null, standIn = null, diy = null, cultOpts = null, skinId = null }) {
+export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bonds, offBonds = null, loadout, onBond, live = null, hint = null, unitItems = null, standIn = null, diy = null, cultOpts = null, foreignSkin = null }) {
   const m = data.get('assets');
-  // the panel hosts the skin picker (loadout detail), so subscribing here is what repaints the header on a new choice.
-  // `skinId` from resolveDetail already carries a teammate's own skin; this local read is used only when it is absent.
-  const own = useSkin(chess?.chessId);
-  const art = skinId || own;
+  // The panel hosts the skin picker, so this subscription is what repaints the header when a choice or either global
+  // switch moves — INCLUDING while the card is already open, which is why the live read wins for our own operators.
+  // `foreignSkin` is the exception: another player's unit carries its own skin (UnitInfo.skin) and this browser's
+  // store has no say over it — see resolveDetail.
+  const { skinId: own } = useSkin(chess?.chessId);
+  const art = own || foreignSkin;
   const hp = hpOf(live, snapHp);
   // 0.2.0 自选编队: `chess` is then the composed 自选 record (the operator, the slot's tier / price); its skill and module are
   // the pick's — the lookups resolve the slot's ids to the same pick (shared/diy.js), so the loadout reads them as defaults
@@ -768,9 +770,10 @@ export function resolveDetail(target, pieces, { priv = null, backups = data.get(
     const c = data.lookup('chess', p.id);
     const d = ownDiy(c);
     // 干员皮肤: an own piece, so the local browser's choice applies (m.private.pieces carry no skin of their own)
-    const skinId = c ? (skinFor(c.chessId) || null) : null;
-    if (d) return { type: 'chess', chess: d.chess, piece: p, standIn: null, diy: d.diy, skinId };
-    return c ? { type: 'chess', chess: c, piece: p, standIn: ownSi(c), skinId } : null;
+    // No skin here: this is OUR piece, and ChessDetail resolves it live. A snapshot taken when the card opened would
+    // go stale the moment either global switch moved (that was the reported "打开卡片后开关没反应").
+    if (d) return { type: 'chess', chess: d.chess, piece: p, standIn: null, diy: d.diy };
+    return c ? { type: 'chess', chess: c, piece: p, standIn: ownSi(c) } : null;
   }
   if (target.kind === 'chess') {
     // a bond popup's 变形同构体 row hands the wearer's item ids on (bondStrip onMember): the card shows the pair and the chip
@@ -790,10 +793,9 @@ export function resolveDetail(target, pieces, { priv = null, backups = data.get(
     const cv = foreign ? (target.cultivation !== undefined ? { cultivation: target.cultivation } : { ops: null }) : null;
     // 干员皮肤 (docs/SKINS.md): what this surface draws is THIS browser's own operator, so the local choice applies
     // (`ownDiy`/`ownSi` above are the viewer's own records too). A teammate's card is never routed through here.
-    const skinId = skinFor(c.chessId) || null;
-    if (d) return { type: 'chess', chess: d.chess, hint: target.hint || null, standIn: null, diy: d.diy, skinId, ...(items.length ? { unitItems: items } : {}), ...(cv ? { cultOpts: cv } : {}), ...tap };
+    if (d) return { type: 'chess', chess: d.chess, hint: target.hint || null, standIn: null, diy: d.diy, ...(items.length ? { unitItems: items } : {}), ...(cv ? { cultOpts: cv } : {}), ...tap };
     const si = !c ? null : foreign ? (typeof target.standInFor === 'string' && target.standInFor ? standInOf(c, backups) : null) : ownSi(c);
-    return c ? { type: 'chess', chess: c, hint: target.hint || null, standIn: si, skinId, ...(items.length ? { unitItems: items } : {}), ...(cv ? { cultOpts: cv } : {}), ...tap } : null;
+    return c ? { type: 'chess', chess: c, hint: target.hint || null, standIn: si, ...(items.length ? { unitItems: items } : {}), ...(cv ? { cultOpts: cv } : {}), ...tap } : null;
   }
   if (target.kind === 'item') { const it = data.lookup('items', target.id); return it ? { type: 'item', item: it } : null; }
   if (target.kind === 'enemy') { const en = data.lookup('enemies', target.id); return en ? { type: 'enemy', enemy: en, count: target.count } : null; }
@@ -819,9 +821,11 @@ export function resolveDetail(target, pieces, { priv = null, backups = data.get(
     const cv = own?.piece ? null : { cultOpts: { cultivation: unitCultivation(u) } };
     // 干员皮肤: a unit carries the skin of whoever owns it (snapshot.js unitInfo publishes `skin`), so a teammate's
     // unit shows THEIR skin — the local choice would be the wrong player's. An own piece's unit reads the local choice.
-    const skinId = own?.piece ? (skinFor(own.piece.id) || null) : (typeof u.skin === 'string' && u.skin ? u.skin : null);
-    if (dr) return { type: 'chess', chess: dr, piece: own?.piece || null, unitId: u.id, unitItems: Array.isArray(u.items) ? u.items : null, standIn: null, diy: pick, skinId, ...cv };
-    if (c) return { type: 'chess', chess: c, piece: own?.piece || null, unitId: u.id, unitItems: Array.isArray(u.items) ? u.items : null, standIn: si, skinId, ...cv };
+    // OUR unit: ChessDetail reads the live choice. ANOTHER player's unit: its own skin travels in UnitInfo.skin, and
+    // this browser's store must not override it (it would dress a teammate in OUR skin).
+    const foreignSkin = own?.piece ? null : (typeof u.skin === 'string' && u.skin ? u.skin : null);
+    if (dr) return { type: 'chess', chess: dr, piece: own?.piece || null, unitId: u.id, unitItems: Array.isArray(u.items) ? u.items : null, standIn: null, diy: pick, ...(foreignSkin ? { foreignSkin } : {}), ...cv };
+    if (c) return { type: 'chess', chess: c, piece: own?.piece || null, unitId: u.id, unitItems: Array.isArray(u.items) ? u.items : null, standIn: si, ...(foreignSkin ? { foreignSkin } : {}), ...cv };
     const t = data.lookup('tokens', u.defId) || diyToken(u.defId);
     if (t) return { type: 'token', token: t, unitId: u.id, ownerId: tokenOwnerId(own?.piece, pieces) };
     const en = data.lookup('enemies', u.defId);
@@ -891,7 +895,7 @@ export function DetailPanel({ detail, editable, snapHp, onClose, onSell, onDestr
     <div class="dpanel__scroll">
       ${detail.type === 'chess' ? html`<${ChessDetail} chess=${detail.chess} piece=${detail.piece} snapHp=${snapHp} editable=${editable} onSell=${sellIt}
         bonds=${bonds} offBonds=${offBonds} loadout=${loadout} onBond=${onBond} live=${liveNow} hint=${detail.hint || null} unitItems=${detail.unitItems || null}
-        standIn=${detail.standIn || null} diy=${detail.diy || null} skinId=${detail.skinId || null} cultOpts=${detail.cultOpts || { ops }} />` : null}
+        standIn=${detail.standIn || null} diy=${detail.diy || null} foreignSkin=${detail.foreignSkin || null} cultOpts=${detail.cultOpts || { ops }} />` : null}
       ${detail.type === 'item' ? html`<${ItemDetail} item=${detail.item} piece=${detail.piece} editable=${editable} onDestroy=${destroyIt} offBonds=${offBonds} />` : null}
       ${detail.type === 'enemy' ? html`<${EnemyDetail} enemy=${detail.enemy} snapHp=${snapHp} count=${detail.count} live=${liveNow} />` : null}
       ${detail.type === 'token' ? html`<${TokenDetail} token=${detail.token} piece=${detail.piece} ownerId=${detail.ownerId ?? null} snapHp=${snapHp} live=${liveNow} />` : null}

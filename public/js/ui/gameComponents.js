@@ -110,7 +110,7 @@ export const isGoldenPiece = (piece, chess) => !!(piece?.golden || chess?.isGold
 export function UnitThumb({ kind = 'chess', id, golden, size = 'md', tier, showTier = true, class: cls, dim = false, badge = null, title, rec = null }) {
   const m = data.get('assets');
   // hooks run unconditionally (a thumbnail's `kind` can change between renders); the value is only used for chess
-  const skinId = useSkin(id);
+  const { skinId } = useSkin(id);
   let src = null;
   let name = '';
   let t = tier;

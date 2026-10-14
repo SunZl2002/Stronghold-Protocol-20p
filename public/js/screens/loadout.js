@@ -199,7 +199,7 @@ export function RosterHead() {
 export function RosterRow({ m, chess, golden, entries, ops = {}, selected, onPick, onChange, onOps, level = 'normal', notOwned = false }) {
   // the row subscribes to the loadout store through its props, not to the skins store: without this the art stayed
   // on whatever was chosen when the row first rendered (a skin picked in the detail panel did not repaint the list)
-  const skinId = useSkin(chess.chessId);
+  const { skinId } = useSkin(chess.chessId);
   const choice = effectiveChoice(entries, chess, golden);
   const opt = chessOptions(chess, golden);
   const cv = opsOf(ops, chess.charId);
@@ -314,7 +314,7 @@ const standInName = (chess) => data.get('backups')?.units?.[chess?.backup?.charI
 function Detail({ m, chess, golden, entries, ops = {}, onChange, onOps, onReset, locked, level = 'normal', onLevel, notOwned = false }) {
   const [statLevel, setStatLevel] = useState('elite'); // 局内数值: the 精锐 shows the chosen module's effect
   // subscribe to the skin choice: this panel is where the picker sets it, so its own header must follow
-  const skinId = useSkin(chess?.chessId);
+  const { skinId } = useSkin(chess?.chessId);
   const setLevel = onLevel;
   const bodyRef = useRef(null);
   useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = 0; }, [chess?.chessId]);

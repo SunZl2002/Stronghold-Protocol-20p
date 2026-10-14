@@ -91,7 +91,7 @@ export function ChessCard({ slot, idx, priv, frozen = false, reason = null, free
   const m = data.get('assets');
   // subscribe to the choice: the card is redrawn when the shop refreshes anyway, but a skin set while the bar is
   // already on screen (the loadout detail is reachable mid-match) must repaint it too
-  const skinId = useSkin(c?.chessId);
+  const { skinId } = useSkin(c?.chessId);
   const tier = c?.tier ?? 1;
   const prog = mergeProgress(priv, slot.id, (id) => data.lookup('chess', id));
   const hint = mergeHint(priv, slot.id);
