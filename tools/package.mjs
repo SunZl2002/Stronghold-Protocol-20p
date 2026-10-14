@@ -90,7 +90,7 @@ export const RUNTIME_RESEARCH = ['docs/research/03-operators.json', 'docs/resear
 export const PLAYER_SCRIPTS = ['scripts/install-service-windows.ps1', 'scripts/launch.mjs', 'scripts/open-browser.mjs',
   'scripts/run-server.cmd', 'scripts/start-windows.bat', 'scripts/start-windows.ps1', 'scripts/start.sh'];
 /** The tools a player runs (npm run setup / doctor / assets, the postinstall) and the ones setup starts. */
-export const PLAYER_TOOLS = ['tools/announcements.mjs', 'tools/asset-cache-pack.mjs', 'tools/crop-board-atlas.mjs', 'tools/doctor.mjs', 'tools/fetch-assets.mjs', 'tools/fetch-skin-avatars.mjs', 'tools/fetch-skin-spines.mjs', 'tools/inject-skins-assets.mjs', 'tools/server-settings.mjs', 'tools/setup.mjs', 'tools/vendor.mjs'];
+export const PLAYER_TOOLS = ['tools/announcements.mjs', 'tools/asset-cache-pack.mjs', 'tools/crop-board-atlas.mjs', 'tools/doctor.mjs', 'tools/fetch-assets.mjs', 'tools/fetch-skin-avatars.mjs', 'tools/fetch-skin-portraits.mjs', 'tools/fetch-skin-spines.mjs', 'tools/inject-skins-assets.mjs', 'tools/server-settings.mjs', 'tools/setup.mjs', 'tools/vendor.mjs'];
 /** Whole tool directories: fetch-assets' modules, the local-client extraction setup runs. */
 export const PLAYER_TOOL_DIRS = ['tools/assets/', 'tools/asset-cache/', 'tools/local-extract/'];
 /** Whole runtime directories (their tracked files). */

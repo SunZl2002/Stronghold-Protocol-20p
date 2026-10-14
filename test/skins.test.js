@@ -265,16 +265,20 @@ test('D037 默认皮肤：每个有模型的干员都装上一款，且只装在
     assert.ok(!dressedChars.has(charId), `${charId} has no installed skin and stays plain`);
   }
 
-  // it never picks one of the three skins whose files the source lacks (matched by exact id: other operators do have
-  // their own `@boc#…` skins, so a substring test would be wrong)
-  const SOURCE_MISSING = new Set(['char_4087_ines@boc#8', 'char_1012_skadi2@boc#4', 'char_1012_skadi2@iteration#2']);
-  for (const skinId of Object.values(map)) {
-    assert.ok(!SOURCE_MISSING.has(skinId), `${skinId} has no model on the source and must not be a default`);
+  // The default never picks a skin whose SPINE MODEL is absent from the manifest — that is the rule, and it is
+  // checked against whatever the committed manifest currently says rather than a frozen list: the source gains files
+  // over time (char_4087_ines@boc#8 arrived after a later retry), so a hard-coded "still missing" list goes stale.
+  for (const [chessId, skinId] of entries) {
+    const charId = chessData[chessId].charId;
+    assert.ok(assetsData.chars[charId].skins[skinId].spine, `${skinId} is a default only because its model is here`);
   }
-  // (and every one of them really is missing: the injector writes `spine` only for files on disk)
-  for (const skinId of SOURCE_MISSING) {
-    const charId = skinId.split('@')[0];
-    assert.ok(!assetsData.chars[charId]?.skins?.[skinId]?.spine, `${skinId} is still without a model`);
+  const noModel = [];
+  for (const [charId, rec] of Object.entries(assetsData.chars)) {
+    for (const [skinId, s] of Object.entries(rec.skins || {})) if (!s.spine) noModel.push(skinId);
+  }
+  // whatever is still modelless must not be a default (nothing else is asserted about the count: it is data)
+  for (const skinId of noModel) {
+    assert.ok(!Object.values(map).includes(skinId), `${skinId} has no model and must not be a default`);
   }
 });
 
@@ -319,9 +323,10 @@ test('D038 商店立绘：选中皮肤时取皮肤立绘，未选中或缺立绘
   assert.equal(chessSkinPortraitUrl(mSelf, withChar(), skinId), '/assets/char/portrait/char_498_inside_1.png', 'portrait id wins');
   assert.equal(chessSkinPortraitUrl(mSelf, withChar({ assets: {} }), skinId), '/assets/char/portrait/char_498_inside.png', 'charId fallback');
 
-  // the committed manifest is the real shape: with no portraits injected yet every skin resolves to null, and the
-  // shop therefore keeps drawing operator art. When I006 step ② lands on a machine with the portrait files, this
-  // asserts the other side of the same rule without needing the files here.
+  // The committed manifest is the real shape, and it now carries portraits for the skins whose art was fetched (I006
+  // step ①: `tools/fetch-skin-portraits.mjs` + the injector). Both sides of the rule are asserted against whatever is
+  // committed rather than a frozen count: with a portrait the resolver returns it, without one it returns null so the
+  // shop keeps drawing the operator's own art.
   let checked = 0;
   let withPortrait = 0;
   for (const [charId, rec] of Object.entries(assetsData.chars)) {
@@ -335,7 +340,6 @@ test('D038 商店立绘：选中皮肤时取皮肤立绘，未选中或缺立绘
     }
   }
   assert.ok(checked > 100, `checked ${checked} installed skins against the committed manifest`);
-  // the count is data, not a rule: today the injector has not run for portraits, so 0 is the truthful value
-  assert.equal(withPortrait, 0, 'data/assets.json carries no portrait yet (I006 step ①)');
+  assert.ok(withPortrait > 0, `the manifest carries portraits (${withPortrait}) — fetch-skin-portraits + inject ran`);
 });
 

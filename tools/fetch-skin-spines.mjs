@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { normalizeSkinAtlasDir } from './assets/skin-atlas.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RESEARCH_PATH = path.join(ROOT, 'docs', 'research', '08-skins.json');
@@ -102,6 +103,17 @@ async function main() {
   await Promise.all(workers);
 
   console.log(`[skin-spines] 完成: 新下载 ${downloaded}, 已存在 ${skipped}, 失败 ${failed}`);
+
+  // 规范化图集：fexli 的皮肤 atlas 没有顶层 `size: W,H` 行（原皮 atlas 有），下载环节补上，
+  // 否则每次重下都会退回去（见 tools/skin-atlas.mjs）。路径分隔符按平台，别只认正斜杠。
+  let fixed = 0, atlasSkipped = 0;
+  const dirs = new Set(activeTasks.map((t) => t.dir.replace(/[\\/](front|back)$/, '')));
+  for (const dir of dirs) {
+    const r = normalizeSkinAtlasDir(dir);
+    fixed += r.fixed;
+    atlasSkipped += r.skipped;
+  }
+  console.log(`[skin-atlas] 规范化: 补了 ${fixed} 个 atlas 的顶层 size 行${atlasSkipped ? `，跳过 ${atlasSkipped}` : ''}`);
 }
 
 main().catch(e => {

@@ -784,6 +784,14 @@ describe('generated manifest data/assets.json', () => {
     const r38 = require('@pixi-spine/runtime-3.8');
     const models = new Map();
     for (const c of Object.values(manifest.chars)) for (const s of Object.values(c.spine || {})) models.set(s.skel, s);
+    // 干员皮肤 (docs/SKINS.md): the ported skin models go through the same reader as the operator's own, so they are
+    // checked here too. They carry no `anims` of their own (the injector copies the operator's), hence the role loop
+    // below falls back to the skeleton's own animation names.
+    for (const c of Object.values(manifest.chars)) {
+      for (const skinEntry of Object.values(c.skins || {})) {
+        for (const s of Object.values(skinEntry.spine || {})) if (s && s.skel) models.set(s.skel, s);
+      }
+    }
     for (const e of Object.values(manifest.enemies)) if (e.spine) models.set(e.spine.skel, e.spine);
     for (const t of Object.values(manifest.tokens)) if (t.spine) models.set(t.spine.skel, t.spine);
     assert.ok(models.size > 400);
@@ -813,7 +821,11 @@ describe('generated manifest data/assets.json', () => {
       const data = new r38.SkeletonBinary(new r38.AtlasAttachmentLoader(atlas)).readSkeletonData(new Uint8Array(readFileSync(join(PUBLIC, s.skel))));
       const skel = new r38.Skeleton(data);
       const state = new r38.AnimationState(new r38.AnimationStateData(data));
-      for (const n of roleAnimationNames(s.anims)) {
+      // a skin model has no role data of its own: play every clip the skeleton actually carries, so each animation is
+      // still exercised (a clip that throws is a broken model)
+      const names = roleAnimationNames(s.anims).length ? roleAnimationNames(s.anims) : data.animations.map((a) => a.name);
+      assert.ok(names.length > 0, `${s.skel} has playable animations`);
+      for (const n of names) {
         state.setAnimation(0, n, true);
         state.update(0.25);
         state.apply(skel);
