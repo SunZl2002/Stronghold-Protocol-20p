@@ -39,7 +39,7 @@ import { html, Icon, TierChip, MicroLabel, Button, confirmDialog, useTicker } fr
 import { Img, RichText, UnitThumb, BondGlyph, GIcon, diyToken } from './gameComponents.js';
 import { attackInterval, rangeGridBox, fmtNum, tileKey, chessLoadout, nextThreshold, bondTier, briefingBondTip, pieceBondIds, grantedBonds, morphPairings, ownStandIn, standInOf, standInLoadout, standInLabel, standInTip, standInForText, ownDiyRecord, ownDiyPick, diyRecordFor, pickGetter, unitPick, unitCultivation } from './gameLogic.js';
 import { chessPortraitUrl, chessSkinPortraitUrl, skillIconUrl, skillRecordIconUrl, profIconUrl, subProfIconUrl, itemIconUrl, enemyIconUrl, tokenAvatarUrl, factionIconUrl, uiUrl, moduleTypeIconUrl } from './assetUrls.js';
-import { skinFor } from './skins.js';
+import { skinFor, useSkin } from './skins.js';
 import { abilityRows } from './abilityLines.js';
 import { data } from '../data.js';
 import { attackRangeGrid } from '../../../shared/loadoutRecord.js';
@@ -387,6 +387,10 @@ function skillTextNote(sk) {
 
 export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bonds, offBonds = null, loadout, onBond, live = null, hint = null, unitItems = null, standIn = null, diy = null, cultOpts = null, skinId = null }) {
   const m = data.get('assets');
+  // the panel hosts the skin picker (loadout detail), so subscribing here is what repaints the header on a new choice.
+  // `skinId` from resolveDetail already carries a teammate's own skin; this local read is used only when it is absent.
+  const own = useSkin(chess?.chessId);
+  const art = skinId || own;
   const hp = hpOf(live, snapHp);
   // 0.2.0 自选编队: `chess` is then the composed 自选 record (the operator, the slot's tier / price); its skill and module are
   // the pick's — the lookups resolve the slot's ids to the same pick (shared/diy.js), so the loadout reads them as defaults
@@ -421,7 +425,7 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
   blocks.head = html`
     <div key="head" class="dhead">
       <div class=${cx('dhead__art', golden && 'is-golden', `dhead__art--t${c.tier}`)}>
-        <${Img} src=${chessSkinPortraitUrl(m, body, skinId) || chessPortraitUrl(m, body)} fallback=${html`<${UnitThumb} kind="chess" id=${c.chessId} size="lg" rec=${si} />`} />
+        <${Img} src=${chessSkinPortraitUrl(m, body, art) || chessPortraitUrl(m, body)} fallback=${html`<${UnitThumb} kind="chess" id=${c.chessId} size="lg" rec=${si} />`} />
       </div>
       <div class="dhead__info">
         <div class="dhead__chips">

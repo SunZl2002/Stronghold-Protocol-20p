@@ -12,7 +12,7 @@
 // except that this one is PUBLIC: the server puts it in `Match.publicView().players[]`, which is how a teammate
 // sees your skin.
 
-import { createStore, loadPref, savePref } from '../store.js';
+import { createStore, loadPref, savePref, useStore, shallowEqual } from '../store.js';
 import { data } from '../data.js';
 import { chessSkinPortraitUrl, chessSkinAvatarUrl, chessPortraitUrl, chessAvatarUrl } from './assetUrls.js';
 
@@ -116,6 +116,24 @@ export function clearSkin(chessId) {
 export const skinFor = (chessId) => skinsStore.get().entries[chessId] || null;
 
 const str = (v) => (typeof v === 'string' && v ? v : null);
+
+/**
+ * Re-render a component when THIS operator's skin choice changes, and return it.
+ *
+ * `portraitFor`/`avatarFor` read `skinFor` directly, which makes them pure but INVISIBLE to a component's own
+ * subscriptions: a roster row subscribes to the loadout store (its skills, its modules) and nothing re-renders it
+ * when the skin picker writes a new skin, so the card kept the art it was first drawn with until the row happened
+ * to re-render for another reason. Subscribing per chess id — rather than to the whole store — keeps a skin change
+ * from repainting all 112 rows.
+ *
+ * @param {string|null|undefined} chessId the chess whose choice to watch
+ * @returns {string|null} the chosen skin id, or null
+ */
+export function useSkin(chessId) {
+  const id = str(chessId);
+  const entries = useStore((s) => s.entries, shallowEqual, skinsStore);
+  return (id && entries[id]) || null;
+}
 
 /**
  * The half-body portrait a card should draw for a chess: the chosen skin's when it has one, else the operator's own

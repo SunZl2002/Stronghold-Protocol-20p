@@ -25,8 +25,8 @@
 import { useEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 import { html, Icon, MicroLabel, Button, TierChip, TextField, Countdown, Spinner, confirmDialog, hasDeadline, Modal, Fragment } from '../ui/components.js';
 import { Img, RichText, UnitThumb } from '../ui/gameComponents.js';
-import { subProfIconUrl, bondIconUrl, moduleTypeIconUrl } from '../ui/assetUrls.js';
-import { portraitFor, avatarFor } from '../ui/skins.js';
+import { subProfIconUrl, bondIconUrl, moduleTypeIconUrl, chessSkinAvatarUrl, chessSkinPortraitUrl, chessAvatarUrl, chessPortraitUrl } from '../ui/assetUrls.js';
+import { useSkin } from '../ui/skins.js';
 import { GarrisonBlock } from '../ui/detailPanel.js';
 import { data, useData, localAsset, DATA_FILES } from '../data.js';
 import { useStore } from '../store.js';
@@ -197,6 +197,9 @@ export function RosterHead() {
  * 「替补」 tag: its stand-in fights with a fixed skill and no 潜能 / 练度, the choices here apply once it is owned again.
  */
 export function RosterRow({ m, chess, golden, entries, ops = {}, selected, onPick, onChange, onOps, level = 'normal', notOwned = false }) {
+  // the row subscribes to the loadout store through its props, not to the skins store: without this the art stayed
+  // on whatever was chosen when the row first rendered (a skin picked in the detail panel did not repaint the list)
+  const skinId = useSkin(chess.chessId);
   const choice = effectiveChoice(entries, chess, golden);
   const opt = chessOptions(chess, golden);
   const cv = opsOf(ops, chess.charId);
@@ -209,7 +212,7 @@ export function RosterRow({ m, chess, golden, entries, ops = {}, selected, onPic
       class=${cx('lo-card', `lo-card--t${chess.tier}`, selected && 'is-sel', changed && 'is-changed', notOwned && 'is-standin')}>
     <button type="button" class="lo-card__pick" aria-pressed=${selected ? 'true' : 'false'} title=${chess.name} onClick=${() => onPick(chess.chessId)}>
       <span class="lo-card__art">
-        <${Img} src=${avatarFor(m, chess)} fallback=${html`<span class="lo-card__glyph">${[...(chess.name || '?')][0]}</span>`} />
+        <${Img} src=${chessSkinAvatarUrl(m, chess, skinId) || chessAvatarUrl(m, chess)} fallback=${html`<span class="lo-card__glyph">${[...(chess.name || '?')][0]}</span>`} />
         <${TierChip} tier=${chess.tier} size="sm" class="lo-card__tier" />
       </span>
       <span class="lo-card__id">
@@ -310,6 +313,8 @@ const standInName = (chess) => data.get('backups')?.units?.[chess?.backup?.charI
 
 function Detail({ m, chess, golden, entries, ops = {}, onChange, onOps, onReset, locked, level = 'normal', onLevel, notOwned = false }) {
   const [statLevel, setStatLevel] = useState('elite'); // 局内数值: the 精锐 shows the chosen module's effect
+  // subscribe to the skin choice: this panel is where the picker sets it, so its own header must follow
+  const skinId = useSkin(chess?.chessId);
   const setLevel = onLevel;
   const bodyRef = useRef(null);
   useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = 0; }, [chess?.chessId]);
@@ -322,7 +327,7 @@ function Detail({ m, chess, golden, entries, ops = {}, onChange, onOps, onReset,
   return html`<aside class="lo-detail" aria-label=${t('{name} 调配', { name: chess.name })}>
     <div class="lo-dhead">
       <div class=${cx('lo-dhead__art', `lo-dhead__art--t${chess.tier}`)}>
-        <${Img} src=${portraitFor(m, golden || chess, chess.chessId)} fallback=${html`<${UnitThumb} kind="chess" id=${chess.chessId} size="lg" />`} />
+        <${Img} src=${chessSkinPortraitUrl(m, golden || chess, skinId) || chessPortraitUrl(m, golden || chess)} fallback=${html`<${UnitThumb} kind="chess" id=${chess.chessId} size="lg" />`} />
       </div>
       <div class="lo-dhead__info">
         <div class="lo-dhead__chips"><${TierChip} tier=${chess.tier} size="md" />

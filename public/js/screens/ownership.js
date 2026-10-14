@@ -12,8 +12,8 @@
 import { useMemo, useState } from '../../vendor/hooks.module.js';
 import { html, TierChip, Icon } from '../ui/components.js';
 import { Img } from '../ui/gameComponents.js';
-import { chessAvatarUrl } from '../ui/assetUrls.js';
-import { avatarFor } from '../ui/skins.js';
+import { chessAvatarUrl, chessSkinAvatarUrl } from '../ui/assetUrls.js';
+import { useSkin } from '../ui/skins.js';
 import { data } from '../data.js';
 import { PROF_NAME } from '../ui/loadoutModel.js';
 import { ownershipRoster, rosterByTier, isOwned, standInSummary } from '../ui/ownershipModel.js';
@@ -30,6 +30,8 @@ export function useOwnershipRoster(ready) {
 /** One chess: the operator → its stand-in, and the 持有 switch (the whole card is the switch). */
 export function OwnCard({ m, chess, backups, owned, onToggle }) {
   const si = standInSummary(chess, backups);
+  // subscribe to this chess's skin: the switch re-renders on the ownership store, not on a skin change
+  const skinId = useSkin(chess.chessId);
   const skill = si?.skill;
   const slot = skill && Number.isInteger(skill.index) ? `S${skill.index + 1}` : '';
   const label = owned ? t('{name}：持有', { name: chess.name }) : t('{name}：未持有，由 {standIn} 上场', { name: chess.name, standIn: si?.name || t('替补干员') });
@@ -37,7 +39,7 @@ export function OwnCard({ m, chess, backups, owned, onToggle }) {
       class=${cx('own-card', `own-card--t${chess.tier}`, !owned && 'is-off')} onClick=${() => onToggle(chess.chessId, !owned)}
       title=${owned ? t('点击标记为未持有：由 {standIn} 上场', { standIn: si?.name || t('替补干员') }) : t('点击恢复为持有')}>
     <span class="own-card__op">
-      <span class="own-card__ava"><${Img} src=${avatarFor(m, chess)} fallback=${html`<b>${[...(chess.name || '?')][0]}</b>`} /></span>
+      <span class="own-card__ava"><${Img} src=${chessSkinAvatarUrl(m, chess, skinId) || chessAvatarUrl(m, chess)} fallback=${html`<b>${[...(chess.name || '?')][0]}</b>`} /></span>
       <span class="own-card__txt">
         <b class="own-card__name">${chess.name}</b>
         <small>${t(PROF_NAME[chess.profession] || '')}${chess.subProfessionName ? ` · ${chess.subProfessionName}` : ''}</small>

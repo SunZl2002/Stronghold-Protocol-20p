@@ -22,8 +22,8 @@
 import { render } from '../../vendor/preact.module.js';
 import { html, TierChip } from './components.js';
 import { GEO } from '../../../shared/constants.js';
-import { chessAvatarUrl, itemIconUrl, tokenAvatarUrl, enemyIconUrl } from './assetUrls.js';
-import { avatarFor } from './skins.js';
+import { chessAvatarUrl, chessSkinAvatarUrl, itemIconUrl, tokenAvatarUrl, enemyIconUrl } from './assetUrls.js';
+import { skinFor } from './skins.js';
 import { tileKey, hasFlag, UF, penPlacement, PEN, fieldTile, ownStandIn, ownDiyRecord } from './gameLogic.js';
 import { t } from '../../../shared/i18n.js';
 
@@ -157,7 +157,11 @@ export function createFallbackView(host, opts = {}) {
     // 干员皮肤 (docs/SKINS.md): the operator's own piece wears this browser's chosen skin; a 补位 stand-in and a 自选
     // pick are OTHER characters (and a DIY slot is never given a skin at all — player/basics.js setSkins), so both
     // keep their own art, exactly as render/app.js pieceInfo does on the canvas path.
-    return si || diy ? chessAvatarUrl(mm, si || diy || chess) : avatarFor(mm, chess);
+    return si || diy ? chessAvatarUrl(mm, si || diy || chess) : (chessSkinAvatarUrl(mm, chess, skinIdFor(chess)) || chessAvatarUrl(mm, chess));
+  }
+  // a plain function, not a component: the field repaints on its own ticker, so it reads the choice at paint time
+  function skinIdFor(chess) {
+    return chess?.chessId ? skinFor(chess.chessId) : null;
   }
   /** 0.2.0 补位: the player's own piece of a chess it does not own is its stand-in, bench and board alike (render/app.js pieceInfo) */
   function ownSi(chess) {

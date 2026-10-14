@@ -7,9 +7,9 @@ import { data, useData, localAsset } from '../data.js';
 import { parseRichText, rtClassName } from './richText.js';
 import { t as tr } from '../../../shared/i18n.js';
 import {
-  uiUrl, chessAvatarUrl, chessPortraitUrl, itemIconUrl, tokenAvatarUrl, enemyIconUrl, bondIconUrl, bandIconUrl,
+  uiUrl, chessAvatarUrl, chessPortraitUrl, chessSkinAvatarUrl, itemIconUrl, tokenAvatarUrl, enemyIconUrl, bondIconUrl, bandIconUrl,
 } from './assetUrls.js';
-import { avatarFor } from './skins.js';
+import { useSkin } from './skins.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -109,6 +109,8 @@ export const isGoldenPiece = (piece, chess) => !!(piece?.golden || chess?.isGold
  */
 export function UnitThumb({ kind = 'chess', id, golden, size = 'md', tier, showTier = true, class: cls, dim = false, badge = null, title, rec = null }) {
   const m = data.get('assets');
+  // hooks run unconditionally (a thumbnail's `kind` can change between renders); the value is only used for chess
+  const skinId = useSkin(id);
   let src = null;
   let name = '';
   let t = tier;
@@ -118,7 +120,8 @@ export function UnitThumb({ kind = 'chess', id, golden, size = 'md', tier, showT
     si = rec && typeof rec.standInFor === 'string' && rec.standInFor ? rec : null;
     // 干员皮肤 (docs/SKINS.md): the chosen skin's avatar, and the operator's own when the skin has none or none is
     // chosen. A 替补 stand-in is a DIFFERENT operator, so it keeps its own art — a skin belongs to the operator.
-    src = si ? chessAvatarUrl(m, c) : avatarFor(m, c);
+    // `useSkin` is what re-renders this thumbnail when the choice changes (the caller passes `id`, a plain prop).
+    src = si ? chessAvatarUrl(m, c) : (chessSkinAvatarUrl(m, c, skinId) || chessAvatarUrl(m, c));
     name = c?.name || '';
     t = t ?? c?.tier;
     golden = golden ?? !!c?.isGolden;
