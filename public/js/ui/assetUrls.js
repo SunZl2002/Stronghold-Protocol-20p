@@ -51,6 +51,30 @@ export function chessPortraitUrl(m, chess) {
   return (chess?.isGolden ? str(byChar.portraitE2) : null) || str(byChar.portrait);
 }
 
+/**
+ * Half-body portrait of one skin of a chess record (D038), or null.
+ *
+ * The manifest groups skins per OPERATOR (`chars[charId].skins[skinId]`, written by
+ * tools/inject-skins-assets.mjs) while the choice is per CHESS (`{ [chessId]: skinId }`, ui/skins.js) — so the
+ * operator is resolved from the record and the skin id is passed in (`skinFor(chessId)`). Only an installed skin
+ * that actually carries a portrait URL resolves: upstream ships a portrait for 131 of the 174 skins, and
+ * `inject-skins-assets` writes the field only for files that are really on disk, so a skin without one yields null
+ * and the caller falls back to the operator's own portrait (`chessPortraitUrl`). Pure: it reads the manifest only.
+ * @param {any} m manifest
+ * @param {any} chess chess.json record (needs `charId` and `assets.portrait`)
+ * @param {string|null|undefined} skinId the skin this chess wears, or null/absent for its own art
+ */
+export function chessSkinPortraitUrl(m, chess, skinId = null) {
+  const charId = str(chess?.charId);
+  const id = str(skinId);
+  if (!charId || !id) return null;
+  const installed = obj(obj(obj(obj(m)?.chars)?.[charId])?.skins)?.[id];
+  // when even the operator's own portrait id (`char_498_inside_1`) has no entry, fall back to `charId`, the same
+  // fallback chessAvatarUrl applies
+  const selfId = str(chess?.assets?.portrait) || charId;
+  return str(installed?.portrait) || str(obj(obj(obj(m)?.chars)?.[selfId])?.portrait) || null;
+}
+
 /** Skill icon of a chess record (manifest `skills[iconId]`, else the empty skill sprite). */
 export function skillIconUrl(m, chess) {
   const skills = obj(obj(m)?.skills);

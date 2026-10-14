@@ -9,6 +9,7 @@ import { isSkinId, isSkinSelection } from '../shared/protocol.js';
 import { mergeSkins, sanitizeSkins, exportPayload, parseImport } from '../public/js/ui/loadoutModel.js';
 import { avatarUrl, spineEntry, hasBackSpine } from '../public/js/assets.js';
 import { defaultSkins } from '../public/js/ui/skins.js';
+import { chessSkinPortraitUrl } from '../public/js/ui/assetUrls.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const skinsData = JSON.parse(readFileSync(join(ROOT, 'data/skins.json'), 'utf8'));
@@ -275,5 +276,66 @@ test('D037 默认皮肤：每个有模型的干员都装上一款，且只装在
     const charId = skinId.split('@')[0];
     assert.ok(!assetsData.chars[charId]?.skins?.[skinId]?.spine, `${skinId} is still without a model`);
   }
+});
+
+test('D038 商店立绘：选中皮肤时取皮肤立绘，未选中或缺立绘时回退原皮', () => {
+  // The manifest groups skins per operator, the choice is per chess — the resolver takes the record and the skin id
+  // (see assetUrls.chessSkinPortraitUrl). Everything here is a pure function over the committed data.
+  const withChar = (patch = {}) => ({ chessId: 'chess_x', charId: 'char_498_inside', assets: { portrait: 'char_498_inside_1' }, ...patch });
+
+  // no choice, or an unknown skin, or a record with no operator: no skin-URL at all (the caller falls back)
+  assert.equal(chessSkinPortraitUrl(assetsData, withChar(), null), null, 'no choice');
+  assert.equal(chessSkinPortraitUrl(assetsData, withChar(), ''), null, 'empty id');
+  assert.equal(chessSkinPortraitUrl(assetsData, withChar(), 'char_498_inside@nope#99'), null, 'unknown skin');
+  assert.equal(chessSkinPortraitUrl(assetsData, { chessId: 'c', assets: {} }, 'char_498_inside@kitchen#2'), null, 'no operator');
+  assert.equal(chessSkinPortraitUrl(null, withChar(), 'char_498_inside@kitchen#2'), null, 'no manifest');
+
+  // with a real choice: the URL comes from the manifest's skin entry, and only ever from there
+  const skinId = 'char_498_inside@kitchen#2';
+  assert.ok(assetsData.chars.char_498_inside.skins[skinId], 'the fixture skin is installed');
+  const m = { chars: {
+    char_498_inside: {
+      portrait: '/assets/char/portrait/char_498_inside.png',
+      skins: { [skinId]: { name: '甜品大奖', portrait: '/assets/char/skin_portrait/char_498_inside@kitchen#2.png' } },
+    },
+  } };
+  assert.equal(chessSkinPortraitUrl(m, withChar(), skinId), '/assets/char/skin_portrait/char_498_inside@kitchen#2.png');
+
+  // a skin without a portrait entry (upstream ships 131 of 174) yields no skin URL, so the operator's own art shows
+  const mNoPortrait = { chars: {
+    char_498_inside: {
+      portrait: '/assets/char/portrait/char_498_inside.png',
+      skins: { [skinId]: { name: '甜品大奖' } },
+    },
+  } };
+  assert.equal(chessSkinPortraitUrl(mNoPortrait, withChar(), skinId), null, 'skin without a portrait falls back');
+
+  // the fallback for the operator's own art tries the record's portrait id first (`…_1`) and then the charId, the
+  // same two keys chessAvatarUrl uses
+  const mSelf = { chars: {
+    char_498_inside: { portrait: '/assets/char/portrait/char_498_inside.png' },
+    char_498_inside_1: { portrait: '/assets/char/portrait/char_498_inside_1.png' },
+  } };
+  assert.equal(chessSkinPortraitUrl(mSelf, withChar(), skinId), '/assets/char/portrait/char_498_inside_1.png', 'portrait id wins');
+  assert.equal(chessSkinPortraitUrl(mSelf, withChar({ assets: {} }), skinId), '/assets/char/portrait/char_498_inside.png', 'charId fallback');
+
+  // the committed manifest is the real shape: with no portraits injected yet every skin resolves to null, and the
+  // shop therefore keeps drawing operator art. When I006 step ② lands on a machine with the portrait files, this
+  // asserts the other side of the same rule without needing the files here.
+  let checked = 0;
+  let withPortrait = 0;
+  for (const [charId, rec] of Object.entries(assetsData.chars)) {
+    for (const [id, entry] of Object.entries(rec.skins || {})) {
+      const chess = Object.values(chessData).find((c) => c.charId === charId);
+      if (!chess) continue;
+      checked++;
+      const url = chessSkinPortraitUrl(assetsData, chess, id);
+      if (entry.portrait) { withPortrait++; assert.equal(url, entry.portrait, `${id} resolves to its own portrait`); }
+      else assert.equal(url, null, `${id} has no portrait and must not invent one`);
+    }
+  }
+  assert.ok(checked > 100, `checked ${checked} installed skins against the committed manifest`);
+  // the count is data, not a rule: today the injector has not run for portraits, so 0 is the truthful value
+  assert.equal(withPortrait, 0, 'data/assets.json carries no portrait yet (I006 step ①)');
 });
 
