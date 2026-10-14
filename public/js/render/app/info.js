@@ -1,4 +1,5 @@
 // public/js/render/app/info.js — battle-unit info handed to a view, and which deaths draw particles.
+import { skinsVisible } from '../../ui/skins.js';
 
 /**
  * 'die' reason of an operator that enters the battle already knocked out — a 联防 helper's operator down at the end of
@@ -29,7 +30,12 @@ export function renderInfo(u) {
     defId: u.defId ?? null, name: u.name ?? '', tier: u.tier ?? 1, golden: !!u.golden, spine: u.spine ?? u.defId ?? null,
     // 干员皮肤 (docs/SKINS.md): the chosen skin's model / avatar, and the identity of this unit's picture — null when
     // the operator wears its default, so a unit without a skin stays byte-identical to before.
-    skin: u.skin ?? null,
+    //
+    // The global switch is applied HERE, not only where a piece is built. `renderInfo` is the single funnel for every
+    // unit entering the renderer, and a battle unit carries the skin the SERVER published (UnitInfo.skin) — which no
+    // client-side `skinFor` ever sees. Without this, 设置 → 显示皮肤 removed the skin from every CARD while the
+    // battlefield kept drawing the skin model: the owner's report 「关闭皮肤 我已选择的皮肤还在」.
+    skin: (u.skin && skinsVisible()) ? u.skin : null,
     avatar: u.avatar ?? u.defId ?? null, x: Number(u.x) || 0, y: Number(u.y) || 0, facing: u.facing === -1 ? -1 : 1,
     maxHp: Number(u.maxHp) || 1, boss: !!u.boss, motion: u.motion,
     // deploy direction of allies (UnitInfo.dir, DESIGN §3): the model (Back for UP, mirrored for LEFT) and the
