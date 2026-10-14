@@ -116,9 +116,18 @@ export function chessSkinPortraitUrl(m, chess, skinId = null) {
   // uninstalled skin): answer null so the caller keeps its own fallback. A manifest with no skin map at all is the
   // ordinary "operator wears its own art" case, which resolves to that art below.
   if (skinMap && !obj(skinMap[id])) return null;
-  // installed (or no skin catalogue to check against): its own portrait, else the operator's own so a card that
-  // drew the skin's art before a re-fetch never goes blank
-  return str(obj(skinMap?.[id])?.portrait) || selfArtUrl(m, chess, 'portrait');
+  const entry = obj(skinMap?.[id]);
+  // its own portrait when upstream ships one…
+  if (str(entry?.portrait)) return str(entry.portrait);
+  // …else, for a skin that HAS a model but no half-body portrait, its 180×180 avatar. Upstream ships a model for 34 of
+  // the dressed chess but no `charpor` file, and those cards showed the OPERATOR's art while the battlefield showed the
+  // skin — an operator that looks undressed on every card (the report "明明有皮肤 这个设置还是不起作用"). A square avatar
+  // cropped by `.scard__art` (object-fit: cover) is a smaller picture than a portrait, but it IS the skin.
+  // Guarded on the skin's own spine: a skin with nothing installed still resolves to the operator's art below, so a
+  // manifest without skin art keeps behaving exactly as it did.
+  if (entry?.spine && str(entry?.avatar)) return str(entry.avatar);
+  // else the operator's own art, so a card that drew the skin's art before a re-fetch never goes blank
+  return selfArtUrl(m, chess, 'portrait');
 }
 
 /** Skill icon of a chess record (manifest `skills[iconId]`, else the empty skill sprite). */

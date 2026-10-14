@@ -337,6 +337,7 @@ test('D038 商店立绘：选中皮肤时取皮肤立绘，未选中或缺立绘
   // own art (so a card never goes blank), which is null only when the manifest lacks that art too.
   let checked = 0;
   let withPortrait = 0;
+  let viaAvatar = 0;
   let viaOperator = 0;
   for (const [charId, rec] of Object.entries(assetsData.chars)) {
     for (const [id, entry] of Object.entries(rec.skins || {})) {
@@ -347,6 +348,11 @@ test('D038 商店立绘：选中皮肤时取皮肤立绘，未选中或缺立绘
       if (entry.portrait) {
         withPortrait++;
         assert.equal(url, entry.portrait, `${id} resolves to its own portrait`);
+      } else if (entry.spine && entry.avatar) {
+        // no half-body portrait upstream, but the skin HAS a model and an avatar: the card must show the SKIN, not the
+        // operator's own art — otherwise the battlefield wears the skin and every card looks undressed
+        viaAvatar++;
+        assert.equal(url, entry.avatar, `${id} shows its avatar rather than the operator's art`);
       } else if (url) {
         viaOperator++;
         assert.ok(url.includes('/char/portrait/'), `${id} falls back to operator art, got ${url}`);
@@ -355,6 +361,7 @@ test('D038 商店立绘：选中皮肤时取皮肤立绘，未选中或缺立绘
   }
   assert.ok(checked > 100, `checked ${checked} installed skins against the committed manifest`);
   assert.ok(withPortrait > 0, `the manifest carries portraits (${withPortrait}) — fetch-skin-portraits + inject ran`);
-  assert.ok(viaOperator > 0, `and ${viaOperator} skins fall back to their operator's art`);
+  assert.ok(viaAvatar > 0, `and ${viaAvatar} skins show their avatar because upstream ships no portrait`);
+  assert.ok(viaOperator + viaAvatar + withPortrait === checked, 'every installed skin resolves to some art');
 });
 
