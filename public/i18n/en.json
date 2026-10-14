@@ -1445,5 +1445,5 @@
   "一键装备皮肤": "Auto-equip skins",
   "开启时每个干员自动穿上已实装的皮肤；关闭后只显示原皮，但仍能看到其他玩家装备的皮肤。": "On dresses every operator in an installed skin automatically. Off shows your own operators plain, while other players' skins still show.",
   "「显示皮肤」已关闭，全场都显示原皮。": "「Show skins」 is off, so everything is drawn plain.",
-  "设置里的「显示皮肤」已关闭，选择会保存但暂不显示。": "「Show skins」 is off in the settings: the choice is saved but not drawn yet."
+  "已关闭": "Off"
 }

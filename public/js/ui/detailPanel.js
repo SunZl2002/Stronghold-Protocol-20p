@@ -302,7 +302,10 @@ export function traitText(c, golden, lo) {
  * such as 休整期结束时 and what it does) right under the header, visible without scrolling; the class trait (特性) and
  * the stats next; then the skill, the elite's module, the equipped items (the player's own build) and the talents.
  */
-export const CHESS_SECTIONS = Object.freeze(['head', 'skin', 'garrison', 'trait', 'stats', 'skill', 'module', 'equip', 'talents', 'actions']);
+// The card's sections, in the order they stack (the panel is a column flex). `skin` sits AFTER the operator's own
+// description — 特质 / 数值 / 技能 — because that is what the card is for; the owner's correction: 特质 优先比 皮肤高,
+// 在头像下面 (the red block stays directly under the portrait, the picker follows it).
+export const CHESS_SECTIONS = Object.freeze(['head', 'garrison', 'trait', 'stats', 'skill', 'skin', 'module', 'equip', 'talents', 'actions']);
 
 /**
  * Sprite key (ui `garrisonTypeIcon/…`, small variant) of a 特质's type chip: the garrison's own official

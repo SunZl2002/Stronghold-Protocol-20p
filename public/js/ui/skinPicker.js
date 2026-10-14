@@ -7,7 +7,7 @@ import { useEffect, useState } from '../../vendor/hooks.module.js';
 import { html, MicroLabel } from './components.js';
 import { useStore, shallowEqual } from '../store.js';
 import { data } from '../data.js';
-import { skinsStore, availableSkins, loadSkinData, setSkin, clearSkin, skinsVisible } from './skins.js';
+import { skinsStore, availableSkins, loadSkinData, setSkin, clearSkin, useSkinsVisible } from './skins.js';
 import { t } from '../../../shared/i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
@@ -57,18 +57,18 @@ export function SkinSection({ chess }) {
   const chosen = s.entries[chessId] || null;
   const defaultArt = data.get('assets')?.chars?.[charId]?.avatar || null;
 
-  // 全局开关关掉时，这里的选择仍然会被保存，只是画面上看不到 —— 说明白，免得以为坏了
-  const notice = !skinsVisible()
-    ? html`<p class="set-hint" data-testid="skin-hidden-note">${t('设置里的「显示皮肤」已关闭，选择会保存但暂不显示。')}</p>`
-    : null;
+  // 设置 → 显示皮肤 switched off: the CHOICES go away (offering a choice the game refuses to draw reads as a broken
+  // control — 关闭了皮肤显示 不应该展示), and only the header stays, its note saying 已关闭 — no extra line of prose
+  // (the owner cut the explanatory hint: 这个不要了). The stored choice is untouched, so switching it back on restores
+  // everything. Subscribed, not read once: the switch can move while this card is open.
+  const { visible } = useSkinsVisible();
 
   return html`<section class="lo-sec lo-sec--skin" data-testid="skin-section">
     <header class="lo-sec__head">
       <h3>${t('皮肤')}<${MicroLabel}>SKIN<//></h3>
-      <span class="lo-sec__note">${t('{n} 款可选', { n: list.length })}</span>
+      <span class="lo-sec__note">${visible ? t('{n} 款可选', { n: list.length }) : t('已关闭')}</span>
     </header>
-    ${notice}
-    <div class="lo-skins" role="radiogroup" aria-label=${t('选择皮肤')}>
+    ${visible ? html`<div class="lo-skins" role="radiogroup" aria-label=${t('选择皮肤')}>
       <button type="button" role="radio" aria-checked=${chosen ? 'false' : 'true'} data-skin=""
         class=${cx('lo-skin', 'lo-skin--default', !chosen && 'is-on')} onClick=${() => clearSkin(chessId)}>
         <span class="lo-skin__art">
@@ -105,6 +105,6 @@ export function SkinSection({ chess }) {
           ${isEquipped ? html`<span class="lo-skin__badge">${t('已装配')}</span>` : null}
         </button>`;
       })}
-    </div>
+    </div>` : null}
   </section>`;
 }
