@@ -9,6 +9,25 @@ import { encode, sendRaw } from './net.js';
 const OK = Object.freeze({ ok: true });
 const fail = (error, detail) => (detail ? { error, detail } : { error });
 
+/** Roster rows are bounded: one frame must never grow with an unbounded population. */
+const ROSTER_MAX = 200;
+/** Order: idle players first (the ones who can still be joined), then watchers, then players in a match. */
+const STATUS_RANK = Object.freeze({ lobby: 0, waiting: 1, spectating: 2, playing: 3 });
+
+/**
+ * The one place the four `LOBBY_STATUS` values are decided. The room's own membership wins over any guess made from
+ * shapes: a spectator seat is watching, a room with a running match is playing, any other room is waiting, and a
+ * player in no room is online in the lobby.
+ * @param {any} room the player's room or null
+ * @param {string} playerId
+ * @returns {'lobby'|'waiting'|'spectating'|'playing'}
+ */
+function statusOf(room, playerId) {
+  if (!room) return 'lobby';
+  if (room.spectatorOf(playerId)) return 'spectating';
+  return room.match ? 'playing' : 'waiting';
+}
+
 /** Public directory data: counts and settings, never identities, tokens, or loadouts. */
 export function roomSummary(room) {
   let humanCount = 0;
@@ -43,6 +62,52 @@ export function roomSummary(room) {
     disconnectedRetained: humanCount > 0 && connectedHumanCount === 0,
     createdAt: room.createdAt,
   };
+}
+
+/**
+ * D039: where one connected player is right now, as a `LOBBY_STATUS` value. Server-owned so the client never infers
+ * it from room shapes. The room's own membership decides, in this order: a spectator seat is watching, a room with a
+ * running match is playing, any other room is waiting, and a player in no room is idle in the lobby.
+ * @param {import('./lobby.js').Lobby} lobby
+ * @param {import('./net.js').Session} session
+ * @returns {'lobby'|'waiting'|'spectating'|'playing'}
+ */
+export function lobbyStatusOf(lobby, session) {
+  return statusOf(lobby.roomOf(session), session.playerId);
+}
+
+/**
+ * One roster row. The optional `round` only ever carries the match's round number — it says nothing about who else
+ * is in the room or how it is configured, so a private room's contents stay private.
+ * @param {import('./lobby.js').Lobby} lobby
+ * @param {import('./net.js').Session} session
+ */
+function rosterRow(lobby, session) {
+  const room = lobby.roomOf(session);
+  const row = { playerId: session.playerId, name: session.name, status: statusOf(room, session.playerId) };
+  const round = room?.match?.round;
+  if (Number.isInteger(round) && round > 0) row.round = round;
+  return row;
+}
+
+/**
+ * D039: the online roster — connected human sessions with their name, status and (when a match is running) its round.
+ * Never AI (a bot has no session), never a token, address or loadout, and never the room's invitation code: a private
+ * room stays private even to a roster reader. `round` deliberately carries only the number, which says nothing about
+ * who else is in the room or how it is configured. Bounded and stably ordered (idle first, then by name) so two
+ * identical populations serialize alike.
+ * @param {import('./lobby.js').Lobby} lobby
+ * @returns {{ playerId: string, name: string, status: string, round?: number }[]}
+ */
+export function lobbyRoster(lobby) {
+  const out = [];
+  for (const session of lobby.registry.all()) {
+    if (session.connected) out.push(rosterRow(lobby, session));
+  }
+  out.sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status]
+    || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+    || (a.playerId < b.playerId ? -1 : a.playerId > b.playerId ? 1 : 0));
+  return out.slice(0, ROSTER_MAX);
 }
 
 /** Fully disconnected rooms go last; both sections retain the original waiting/running ordering. */
@@ -94,6 +159,16 @@ export class LobbyDiscovery {
       this.timers.clearTimeout(this.timer);
       this.timer = null;
     }
+  }
+
+  /**
+   * D039 `lobby.online`: the online roster, answered on demand. Available to any connected player in any state —
+   * including one already inside a room or a running match, who may open the roster to see who else is around; it
+   * reads presence only and changes nothing. Refused while the emergency brake is on, like every other lobby query.
+   */
+  online() {
+    if (this.lobby.emergency?.active) return fail(ERR.SERVER_EMERGENCY);
+    return { ok: true, reply: { t: 'lobby.online', players: lobbyRoster(this.lobby) } };
   }
 
   /** Schedule one shared update, irrespective of how many room/presence events occur. */

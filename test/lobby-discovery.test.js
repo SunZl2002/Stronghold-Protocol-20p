@@ -44,6 +44,65 @@ function harness(t, chooseIndex = () => 0) {
   return { lobby, registry, player, room, pending, flush };
 }
 
+test('D039 online roster lists connected humans with their status and round, and nothing private', (t) => {
+  const { lobby, player, room } = harness(t);
+  const host = player('Host');
+  const guest = player('Guest');
+  const watcher = player('Watcher');
+  const idle = player('Idle');
+  player('Gone', false);           // disconnected: keeps its room, leaves the roster
+  const waiting = room(host);      // coop room with a free seat, no match yet
+  lobby.join(guest, { code: waiting.code });
+  lobby.spectate(watcher, { code: waiting.code });
+  lobby.addBot(host);              // AI: has no session at all, so it can never appear
+
+  // the reply is a direct answer to the request, carrying the roster
+  const reply = lobby.onMessage(idle, { t: 'lobby.online', rid: 7 });
+  assert.equal(reply.ok, true);
+  assert.equal(reply.reply.t, 'lobby.online');
+  const rows = reply.reply.players;
+  assert.deepEqual(rows.map((r) => [r.name, r.status]), [
+    ['Idle', 'lobby'],                            // in no room, so it sorts first: the joinable ones on top
+    ['Guest', 'waiting'], ['Host', 'waiting'],    // in the room, waiting (same status: by name)
+    ['Watcher', 'spectating'],                    // holds a spectator seat
+  ]);
+
+  // the payload is exactly the three declared fields (+ round), and the guest code never leaks
+  for (const r of rows) {
+    assert.deepEqual(Object.keys(r).sort(), ['name', 'playerId', 'status']);
+    assert.ok(['lobby', 'waiting', 'spectating', 'playing'].includes(r.status), r.status);
+  }
+  const wire = JSON.stringify(reply.reply);
+  assert.equal(wire.includes(waiting.code), false, 'the invitation code stays out of the roster');
+  assert.equal(wire.includes('token'), false);
+  assert.equal(rows.some((r) => r.name === 'Gone'), false, 'a disconnected session is not online');
+
+  // once the room runs a match, its players read as playing and carry the round; the spectator reads the same round
+  waiting.match = { round: 5 };
+  const played = lobby.onMessage(idle, { t: 'lobby.online' }).reply.players;
+  assert.deepEqual(played.map((r) => [r.name, r.status, r.round ?? null]), [
+    ['Idle', 'lobby', null],                        // idle first, the joinable ones on top
+    ['Watcher', 'spectating', 5],
+    ['Guest', 'playing', 5],                        // same name-less tie broken by playerId, so Guest before Host
+    ['Host', 'playing', 5],
+  ]);
+  // a round of 0 (or a match without one) simply omits the field rather than sending a falsy value
+  waiting.match = {};
+  for (const r of lobby.onMessage(idle, { t: 'lobby.online' }).reply.players) assert.equal('round' in r, false);
+  assert.deepEqual(lobby.onMessage(idle, { t: 'lobby.online' }).reply.players.map((r) => r.status),
+    ['lobby', 'spectating', 'playing', 'playing'], 'STATUS_RANK ordering is stable across requests');
+});
+
+test('D039 the roster is refused while the emergency brake is on, and answers an empty population', (t) => {
+  const { lobby, player } = harness(t);
+  const solo = player('Solo');
+  assert.equal(lobby.onMessage(solo, { t: 'lobby.online' }).ok, true);
+  lobby.setEmergency({ active: true });
+  assert.deepEqual(lobby.onMessage(solo, { t: 'lobby.online' }), { error: ERR.SERVER_EMERGENCY });
+  lobby.setEmergency({ active: false });
+  assert.deepEqual(lobby.onMessage(solo, { t: 'lobby.online' }).reply.players.map((r) => r.name), ['Solo']);
+});
+
 test('lobby discovery messages validate shared capacities and bounded pages', () => {
   assert.equal(validateC2S({ t: 'lobby.watch', on: true }), null);
   assert.equal(validateC2S({ t: 'lobby.watch', on: true, list: true, page: 0 }), null);

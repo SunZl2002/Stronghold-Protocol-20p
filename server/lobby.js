@@ -439,6 +439,7 @@ export class Lobby {
       || (msg.t === 'lobby.watch' && msg.on))) return fail(ERR.SERVER_EMERGENCY);
     switch (msg.t) {
       case 'lobby.watch': return this.discovery.watch(session, msg);
+      case 'lobby.online': return this.discovery.online();
       case 'lobby.quickMatch': return this.discovery.quickMatch(session, msg);
       case 'lobby.join': return this.discovery.accessById(session, msg, false);
       case 'lobby.spectate': return this.discovery.accessById(session, msg, true);

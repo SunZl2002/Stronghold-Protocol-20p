@@ -28,7 +28,7 @@ import { store, useStore, shallowEqual, loadPref, savePref } from '../store.js';
 import { getConfig, getMode, getStage, useData } from '../data.js';
 import { t, tc, N_ } from '../../../shared/i18n.js';
 import { createLobbyDiscovery } from '../lobbyDiscovery.js';
-import { LobbyOnlinePill, LobbyDiscoveryPanel, LobbyRoomList } from '../ui/lobbyDiscovery.js';
+import { LobbyOnlinePill, LobbyOnlineRoster, LobbyDiscoveryPanel, LobbyRoomList } from '../ui/lobbyDiscovery.js';
 
 /** Official mode texts (activity_table act2autochess.modeDataDict), fallback when config.json is absent. */
 export const MODE_TEXT = {
@@ -336,7 +336,8 @@ export function LobbyScreen() {
       <div class="topbar__left">
         <${Button} variant="ghost" size="sm" icon="chevronLeft" onClick=${backToTitle} title=${t('返回标题')}>${t('返回')}<//>
         <${PingPill} ms=${conn.ping} online=${online} />
-        <${LobbyOnlinePill} count=${discoveryState.online} connected=${online} />
+        <${LobbyOnlinePill} count=${discoveryState.online} connected=${online}
+          onOpen=${() => discovery.openOnline()} open=${discoveryState.onlineOpen} />
         <${AssetCacheButton} />
         <${ResumeMatchButton} />
         <${PwaInstallButton} class="lobby-pwa" square=${true} />
@@ -423,5 +424,8 @@ export function LobbyScreen() {
     ${discoveryState.open ? html`<${LobbyRoomList} state=${discoveryState} connected=${online}
       onClose=${() => discovery.close()} onRefresh=${() => discovery.refresh()} onPage=${(page) => discovery.page(page)}
       onJoin=${directoryJoin} onSpectate=${directorySpectate} busy=${!!busy} />` : null}
+    <${LobbyOnlineRoster} open=${discoveryState.onlineOpen} players=${discoveryState.players}
+      loading=${discoveryState.rosterLoading} error=${discoveryState.rosterError}
+      onClose=${() => discovery.closeOnline()} onRefresh=${() => discovery.refreshOnline()} />
   </div>`;
 }

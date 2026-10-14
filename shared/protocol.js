@@ -404,6 +404,10 @@ export const C2S = {
   ping: { c: (v) => typeof v === 'number' && Number.isFinite(v) },
   // Lightweight directory subscription; only the opened list carries one bounded page of room summaries.
   'lobby.watch': { on: isBool, list: isBool, page: (v) => isInt(v, 0, 1e6), $optional: ['list', 'page'] },
+  // D039: who is online, asked for on demand when the player opens the roster (never pushed — a bare count rides
+  // lobby.state and a roster on every presence change would cost a payload per connect). The reply lists connected
+  // human sessions as { playerId, name, status }; `status` is one of LOBBY_STATUS.
+  'lobby.online': {},
   // Admission metadata uses the existing wire-v1 extension slot; published position layouts stay unchanged.
   'lobby.quickMatch': { capacity: (v) => ROOM_CAPACITIES.includes(v), assetCache: isAssetCacheReadiness, $optional: ['capacity', 'assetCache'] },
   // Post-v1 types use the readable JSON fallback; public identities never expose hidden invitation codes.
@@ -511,11 +515,20 @@ export const C2S = {
   'b.yield': { battleId: isId },
 };
 
+/**
+ * D039: the four states a row of the online roster can be in. Server-owned, so the client never has to infer them
+ * from room shapes: idle in the lobby, waiting in a room, watching a match as a spectator, or playing it.
+ */
+export const LOBBY_STATUS = Object.freeze(['lobby', 'waiting', 'spectating', 'playing']);
+
 // Server → client message types (documentation + client dispatch table keys).
 export const S2C = [
   'welcome', 'ok', 'error', 'pong',
   'announcement.notice', // explicit server-owner command; publication alone never sends this push
   'lobby.state',
+  // lobby.online — the answer to the roster request (D039): { players: [{ playerId, name, status }] }, `status` one of
+  // LOBBY_STATUS. Only connected humans, never AI; a disconnected seat keeps its room but leaves the roster.
+  'lobby.online',
   'room.state', 'room.closed',
   'm.public', 'm.private', 'm.field', 'm.toast', 'm.ticker', 'm.emote', 'm.result',
   // m.layer { playerId, bondId, add } — own live prep layer gain; ephemeral, never replayed on resync.

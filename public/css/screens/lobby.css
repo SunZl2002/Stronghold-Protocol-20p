@@ -268,6 +268,20 @@
 .lobby-online { display: inline-flex; align-items: center; gap: .05rem; min-width: .86rem; height: .34rem; padding: 0 .1rem; border: 1px solid var(--mint-800); background: rgba(20, 84, 67, .28); color: var(--mint-400); font-size: calc(.14 * var(--t)); white-space: nowrap; }
 .lobby-online .icon { width: .17rem; height: .17rem; }
 .lobby-online.is-offline { color: var(--text-dim); border-color: var(--line-2); background: rgba(0, 0, 0, .25); }
+/* D039: the same pill as a button that opens the online roster. */
+.lobby-online--btn { cursor: pointer; font-family: inherit; }
+.lobby-online--btn:hover:not(:disabled), .lobby-online--btn.is-open { border-color: var(--mint-500); background: rgba(20, 84, 67, .5); color: var(--mint-glow); }
+.lobby-online--btn:disabled { cursor: default; }
+.lobby-online--btn:focus-visible { outline: 2px solid var(--mint-400); outline-offset: 1px; }
+/* D039 roster rows: name left, status (and round) right. */
+.lobby-roster { display: flex; flex-direction: column; gap: .04rem; max-height: 46vh; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.lobby-roster__row { display: flex; align-items: center; justify-content: space-between; gap: .12rem; padding: .07rem .1rem; border: 1px solid var(--line-2); background: rgba(0, 0, 0, .22); }
+.lobby-roster__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-md); font-size: calc(.15 * var(--t)); }
+.lobby-roster__state { display: inline-flex; align-items: center; gap: .08rem; flex: none; color: var(--text-dim); font-size: calc(.13 * var(--t)); white-space: nowrap; }
+.lobby-roster__row[data-status="lobby"] .lobby-roster__state { color: var(--mint-400); }
+.lobby-roster__row[data-status="playing"] .lobby-roster__state { color: var(--mint-600); }
+.lobby-roster__round { color: var(--text-dim); font-size: calc(.12 * var(--t)); }
+.lobby-roster__msg { margin: 0; padding: .18rem .1rem; color: var(--text-dim); font-size: calc(.14 * var(--t)); text-align: center; }
 .lobby-discovery { margin: .02rem 0 .28rem; padding: .16rem .18rem .14rem; border: 1px solid var(--mint-800); background: linear-gradient(100deg, rgba(13, 44, 36, .68), rgba(10, 14, 12, .8)); box-shadow: inset 0 0 .55rem rgba(23, 249, 183, .03); }
 .lobby-discovery__overview { display: flex; align-items: center; justify-content: space-between; gap: .16rem; min-width: 0; }
 .lobby-discovery__heading { display: flex; flex-direction: column; gap: .04rem; min-width: 0; }

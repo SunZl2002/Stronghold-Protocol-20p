@@ -3,11 +3,54 @@ import { ROOM_CAPACITIES, DEFAULT_SPECTATORS } from '../../../shared/constants.j
 import { t } from '../../../shared/i18n.js';
 import { html, Button, Icon, MicroLabel, Spinner, DifficultyTag, Modal } from './components.js';
 
-export function LobbyOnlinePill({ count, connected }) {
-  return html`<span class=${`lobby-online${connected ? '' : ' is-offline'}`} data-testid="lobby-online"
-      title=${t('在线人数为当前已连接的人类玩家，不含 AI。')} aria-label=${t('服务器在线人数')}>
-    <${Icon} name="users" /><span>${t('在线 {n}', { n: connected && count != null ? count : '—' })}</span>
-  </span>`;
+export function LobbyOnlinePill({ count, connected, onOpen = null, open = false }) {
+  // D039: without a handler this stays the read-only count it has always been (older callers and tests); with one it
+  // becomes the button that opens the online roster.
+  const label = t('在线 {n}', { n: connected && count != null ? count : '—' });
+  if (!onOpen) {
+    return html`<span class=${`lobby-online${connected ? '' : ' is-offline'}`} data-testid="lobby-online"
+        title=${t('在线人数为当前已连接的人类玩家，不含 AI。')} aria-label=${t('服务器在线人数')}>
+      <${Icon} name="users" /><span>${label}</span>
+    </span>`;
+  }
+  return html`<button type="button" class=${`lobby-online lobby-online--btn${connected ? '' : ' is-offline'}${open ? ' is-open' : ''}`}
+      data-testid="lobby-online" disabled=${!connected} aria-haspopup="dialog" aria-expanded=${open ? 'true' : 'false'}
+      title=${t('点开查看当前在线的玩家：在线人数为当前已连接的人类玩家，不含 AI。')} aria-label=${t('查看在线玩家')}
+      onClick=${onOpen}>
+    <${Icon} name="users" /><span>${label}</span>
+  </button>`;
+}
+
+/** D039: one roster row's status text. `status` is a server-owned LOBBY_STATUS value. */
+export function LobbyStatusLabel({ status }) {
+  if (status === 'waiting') return t('在房间');
+  if (status === 'spectating') return t('观战中');
+  if (status === 'playing') return t('游戏中');
+  return t('在线');
+}
+
+/**
+ * D039: the online roster — one row per connected player with their name, status, and the round of the match they are
+ * in. Read-only: this branch does not implement invitations, so a row never carries an action.
+ */
+export function LobbyOnlineRoster({ open, players = null, loading = false, error = false, onClose, onRefresh }) {
+  const list = Array.isArray(players) ? players : [];
+  return html`<${Modal} open=${open} title=${t('在线玩家')} micro=${t('当前已连接的人类玩家，不含 AI')} width="420px" onClose=${onClose}
+      actions=${html`<${Button} variant="ghost" size="sm" onClick=${onRefresh} disabled=${loading}>${t('刷新')}<//>`}>
+    ${error ? html`<p class="lobby-roster__msg">${t('无法获取在线名单，请稍后重试。')}</p>`
+      : loading && !list.length ? html`<p class="lobby-roster__msg"><${Spinner} /> ${t('读取中…')}</p>`
+      : !list.length ? html`<p class="lobby-roster__msg">${t('当前没有其他玩家在线。')}</p>`
+      : html`<ul class="lobby-roster" data-testid="lobby-roster">
+          ${list.map((p) => html`<li key=${p.playerId} class="lobby-roster__row" data-status=${p.status}>
+            <span class="lobby-roster__name">${p.name}</span>
+            <span class="lobby-roster__state">
+              <${LobbyStatusLabel} status=${p.status} />
+              ${Number.isInteger(p.round) && p.round > 0
+                ? html`<small class="lobby-roster__round">${t('第 {n} 回合', { n: p.round })}</small>` : null}
+            </span>
+          </li>`)}
+        </ul>`}
+  <//>`;
 }
 
 export function LobbyRoomRow({ room, onJoin, onSpectate, busy, connected }) {

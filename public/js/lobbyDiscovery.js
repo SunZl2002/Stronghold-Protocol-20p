@@ -7,6 +7,9 @@ export const emptyLobbyDiscovery = () => ({
   online: null, roomCount: null, matchCount: null, playingCount: null, joinableCount: null,
   rooms: [], page: 0, totalPages: 1, pageSize: LOBBY_PAGE_SIZE,
   open: false, loading: false, ready: false, error: false,
+  // D039 online roster: asked for on demand when the player opens it, and dropped when it closes (it is presence, so
+  // a stale copy is worse than none).
+  onlineOpen: false, players: [], rosterLoading: false, rosterError: false,
 });
 
 /** Injectable controller for route/reconnect cleanup and out-of-order watch replies. */
@@ -15,7 +18,8 @@ export function createLobbyDiscovery({ net, target = createStore(emptyLobbyDisco
   let connected = false;
   let generation = 0;
   let watchKey = null;
-  let wanted = { list: false, page: 0 };
+  let wanted = { list: false, page: 0, roster: false };
+  let rosterGeneration = 0;
   let unsubscribe = [];
 
   function apply(message) {
@@ -72,6 +76,33 @@ export function createLobbyDiscovery({ net, target = createStore(emptyLobbyDisco
     else target.set({ ...emptyLobbyDiscovery(), open: wanted.list, page: wanted.page });
   }
 
+  /**
+   * D039: fetch the online roster. Not part of the watch subscription — the server pushes a bare count and the roster
+   * only while its modal is open, so presence churn costs nothing to anyone who never opens it.
+   */
+  function loadRoster() {
+    if (!active || !connected || !wanted.roster) return;
+    const ticket = ++rosterGeneration;
+    target.set({ rosterLoading: true, rosterError: false });
+    Promise.resolve().then(() => {
+      if (!active || !connected || ticket !== rosterGeneration) return null;
+      return net.request('lobby.online', {});
+    }).then((reply) => {
+      if (!active || !connected || ticket !== rosterGeneration) return;
+      if (reply?.t === 'lobby.online') {
+        const players = Array.isArray(reply.players)
+          ? reply.players.filter((p) => p && typeof p.playerId === 'string' && typeof p.name === 'string')
+          : [];
+        target.set({ players, rosterLoading: false, rosterError: false });
+        return;
+      }
+      target.set({ rosterLoading: false, rosterError: true });
+    }).catch(() => {
+      if (!active || !connected || ticket !== rosterGeneration) return;
+      target.set({ rosterLoading: false, rosterError: true });
+    });
+  }
+
   return {
     target,
     start() {
@@ -83,8 +114,7 @@ export function createLobbyDiscovery({ net, target = createStore(emptyLobbyDisco
           // request() handles rid replies with its generation guard; this listener handles pushes.
           if (message?.rid == null) apply(message);
         }),
-        net.on('status', onStatus),
-        net.on('welcome', () => {
+        net.on('status', onStatus),        net.on('welcome', () => {
           if (!connected) onStatus({ status: 'online' });
           else watch();
         }),
@@ -93,12 +123,12 @@ export function createLobbyDiscovery({ net, target = createStore(emptyLobbyDisco
     },
     show() {
       if (wanted.list && wanted.page === 0 && target.get().open) return;
-      wanted = { list: true, page: 0 };
+      wanted = { list: true, page: 0, roster: wanted.roster };
       target.set({ open: true, rooms: [], page: 0, error: false });
       watch();
     },
     close() {
-      wanted = { list: false, page: 0 };
+      wanted = { list: false, page: 0, roster: wanted.roster };
       target.set({ open: false, rooms: [], page: 0, error: false });
       watch();
     },
@@ -106,11 +136,25 @@ export function createLobbyDiscovery({ net, target = createStore(emptyLobbyDisco
       if (!wanted.list) return;
       const next = Math.max(0, Math.min(9999, Math.floor(Number(page) || 0)));
       if (wanted.page === next) return;
-      wanted = { list: true, page: next };
+      wanted = { list: true, page: next, roster: wanted.roster };
       target.set({ page: next, rooms: [], error: false });
       watch();
     },
     refresh() { watch(true); },
+    /** D039: open the online roster and ask for a fresh copy. */
+    openOnline() {
+      if (!active) return;
+      wanted = { ...wanted, roster: true };
+      target.set({ onlineOpen: true, rosterError: false });
+      loadRoster();
+    },
+    /** D039: close it and forget the copy — it is presence, and stale presence misleads. */
+    closeOnline() {
+      wanted = { ...wanted, roster: false };
+      rosterGeneration++;
+      target.set({ onlineOpen: false, players: [], rosterLoading: false, rosterError: false });
+    },
+    refreshOnline() { loadRoster(); },
     dispose() {
       if (!active) return;
       active = false;

@@ -68,9 +68,10 @@ export const NET_DEFAULTS = Object.freeze({
  * edits), room.ownership
  * (a ≤ 160-id list, the same way), room.diy (≤ 8 自选 picks checked against the data, the same way) and room.spectate / lobby.spectate
  * (taking a spectator seat in a running match resends its state like a watcher's g.watch — server/lobby.js spectate),
- * and lobby.watch with on:true/list:true (a paginated room directory, at most 50 rows per reply).
+ * and lobby.watch with on:true/list:true (a paginated room directory, at most 50 rows per reply) and lobby.online
+ * (the D039 roster, at most 200 rows per reply).
  */
-export const HEAVY_TYPES = new Set(['g.watch', 'room.loadout', 'room.skins', 'room.ownership', 'room.diy', 'room.spectate', 'lobby.spectate', 'lobby.watch']);
+export const HEAVY_TYPES = new Set(['g.watch', 'room.loadout', 'room.skins', 'room.ownership', 'room.diy', 'room.spectate', 'lobby.spectate', 'lobby.watch', 'lobby.online']);
 
 /** Close codes (see header). */
 export const CLOSE = Object.freeze({ REPLACED: 4001, HELLO_TIMEOUT: 4002, POLICY: 1008, SHUTDOWN: 1001 });

@@ -35,10 +35,12 @@ const V1_JSON_FALLBACK = Object.freeze({
   // room.skins (干员皮肤, docs/SKINS.md) arrived after v1 was published and has no numeric id of its own: it travels
   // as readable JSON like the branch's own chat / matchmaking / spectator-capacity intents. Its payload rides in
   // m.public.players[].skins, which the codec already carries in the extension slot (like bossPairs above).
-  c2s: ['room.chat', 'room.setMatchmaking', 'room.setSpectatorCapacity', 'room.skins', 'lobby.join', 'lobby.spectate'],
+  c2s: ['room.chat', 'room.setMatchmaking', 'room.setSpectatorCapacity', 'room.skins', 'lobby.join', 'lobby.spectate',
+    // lobby.online (D039, the on-demand roster) likewise has no numeric id of its own.
+    'lobby.online'],
   // m.layer (upstream 0.2.5: own live prep layer gain, ephemeral) arrived after v1 was published and has no
   // numeric id of its own; it travels as readable JSON, exactly like this branch's chat and emergency frames.
-  s2c: ['m.chat', 'm.chatState', 'm.emergency', 'm.layer'],
+  s2c: ['m.chat', 'm.chatState', 'm.emergency', 'm.layer', 'lobby.online'],
 });
 
 test('v1 complete catalog fingerprint prevents accidental published field or enum renumbering', () => {

@@ -1427,5 +1427,17 @@
   "正在载入配置…": "Loading…",
   "{n} 款可选": "{n} available",
   "选择皮肤": "Choose a skin",
-  "已装配": "Equipped"
+  "已装配": "Equipped",
+  "在线": "Online",
+  "在房间": "In a Room",
+  "游戏中": "In a Match",
+  "点击": "Click",
+  "在线玩家": "Players Online",
+  "当前已连接的人类玩家，不含 AI": "Currently connected human players, not AI",
+  "读取中…": "Loading…",
+  "当前没有其他玩家在线。": "No other players are online right now.",
+  "无法获取在线名单，请稍后重试。": "Could not load the online roster. Try again later.",
+  "查看在线玩家": "View online players",
+  "第 {n} 回合": "Round {n}",
+  "点开查看当前在线的玩家：在线人数为当前已连接的人类玩家，不含 AI。": "Open the list of players online now. The count covers connected human players, not AI."
 }
