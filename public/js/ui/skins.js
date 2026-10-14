@@ -20,8 +20,35 @@ import { chessSkinPortraitUrl, chessSkinAvatarUrl, chessPortraitUrl, chessAvatar
 export const SKINS_PREF = 'skins';
 /** Marks that this browser has already been seeded with the default skins (see installDefaultSkins). */
 export const SKINS_DEFAULT_PREF = 'skinsDefault';
+/**
+ * The chess that took their skin from the one-click dress (`installDefaultSkins`), not from the player.
+ *
+ * Needed so 设置 → 一键装备皮肤 can be switched off WITHOUT touching a single stored choice: the entries stay, and
+ * `skinFor` simply stops resolving the ones this list names. Before it existed, switching off deleted every entry the
+ * seed could reproduce (`clearDefaultSkins`), which also deleted the player's own picks whenever they happened to match
+ * a default, and left nothing to restore — switching back on could only re-seed.
+ */
+export const SKINS_AUTO_PREF = 'skinsAutoSeeded';
 export const SYNC_DEBOUNCE_MS = 500;
 export const RETRY_MS = 1500;
+
+/** The chess ids currently dressed by the one-click seed. */
+function readAutoSeeded() {
+  const raw = loadPref(SKINS_AUTO_PREF, null);
+  return new Set(Array.isArray(raw) ? raw.filter((x) => typeof x === 'string') : []);
+}
+
+/**
+ * `readAutoSeeded()` is a localStorage read and `skinFor` runs for every card on every render, so the set is cached
+ * here and refreshed by the only writer.
+ */
+let autoSeededCache = readAutoSeeded();
+
+/** Remember which chess the one-click seed dressed (empty set when the dress is not active). */
+function writeAutoSeeded(ids) {
+  savePref(SKINS_AUTO_PREF, [...ids]);
+  autoSeededCache = new Set(ids);
+}
 
 function readStored() {
   const raw = loadPref(SKINS_PREF, null);
@@ -76,12 +103,18 @@ export function defaultSkins(store = data) {
  * @returns {boolean} whether it seeded anything
  */
 export function installDefaultSkins() {
-  if (!skinsAutoEquip()) return false;   // 一键装备 off: never dress, and never seed a later reload either
   if (loadPref(SKINS_DEFAULT_PREF, false)) return false;
   // all three, because the default map is keyed by chess id: the catalogue and the manifest alone yield nothing
   if (data.status('skins') !== 'ready' || data.status('assets') !== 'ready' || data.status('chess') !== 'ready') return false;
   const seeded = defaultSkins();
   savePref(SKINS_DEFAULT_PREF, true);
+  // which chess take their skin from the dress rather than from the player: an existing pick is the player's, and is
+  // never marked (so 一键装备 off never hides it)
+  const auto = new Set();
+  for (const chessId of Object.keys(seeded)) if (!Object.hasOwn(skinsStore.get().entries, chessId)) auto.add(chessId);
+  writeAutoSeeded(auto);
+  // The entries are written even when the dress switch is OFF (the seed runs once per browser, before the player can
+  // reach the settings): `skinFor` decides whether they are WORN, so switching the dress on later needs no re-seed.
   if (Object.keys(seeded).length) setSkins({ ...seeded, ...skinsStore.get().entries }); // an existing pick wins
   return true;
 }
@@ -98,35 +131,43 @@ export function installDefaultSkins() {
  * Keeps the seeded marker so a later reload does not resurrect the defaults, and returns how many it removed.
  * @returns {number}
  */
+/**
+ * Turn the one-click dress off, WITHOUT touching a single stored choice (settings → 一键装备皮肤).
+ *
+ * Nothing is deleted: the entries stay exactly as they are, and `skinFor` stops resolving the ones the seed dressed
+ * (`SKINS_AUTO_PREF`, recorded by `installDefaultSkins`). That is what makes the two switches independent — 显示皮肤
+ * stays the display switch and this one only decides whether the DEFAULTS are worn, so switching it off and on again
+ * is lossless.
+ *
+ * It used to delete the entries a re-seed could reproduce (`clearDefaultSkins`). That silently threw away the
+ * player's own picks whenever one matched a default, and left nothing to restore — the old `restoreDefaultSkins`
+ * could only re-seed. The report was exactly that: 关闭一键装备皮肤 cleared the shop art even though 显示皮肤 was on.
+ * @returns {number} how many chess stopped being dressed
+ */
 export function clearDefaultSkins() {
-  const defaults = defaultSkins();
-  const next = { ...skinsStore.get().entries };
-  let removed = 0;
-  for (const chessId of Object.keys(defaults)) {
-    if (Object.hasOwn(next, chessId) && next[chessId] === defaults[chessId]) { delete next[chessId]; removed++; }
-  }
-  if (removed) setSkins(next);
-  // and while the switch is off, never seed again (installDefaultSkins would otherwise re-add them on the next load)
-  savePref(SKINS_DEFAULT_PREF, true);
-  return removed;
+  const auto = readAutoSeeded();
+  if (!auto.size) return 0;
+  writeAutoSeeded(new Set());   // the dress is off; the entries stay
+  return auto.size;
 }
 
 /**
  * Put the one-click dress back (settings → 一键装备皮肤 switched on again).
  *
- * Re-seeds the defaults that `clearDefaultSkins` removed, on top of whatever the player has now. `installDefaultSkins`
- * cannot do it alone: its one-seed-per-browser marker is already set (turning the switch off sets it on purpose, so a
- * reload cannot resurrect the defaults behind the player's back), which is why the marker is cleared first here — the
- * player just asked for the dress, so the "this browser has made its choice" guard no longer applies.
- *
- * A hand-picked skin still wins over the default for that operator (`an existing pick wins` in installDefaultSkins).
- * @returns {number} how many defaults came back
+ * Re-marks whatever the seed would dress right now, on top of the entries already stored, and never overwrites a
+ * choice that is not part of the seed. Because switching off never deleted anything, this is where the player's own
+ * picks come back too — including one they made while the dress was off (`setSkin` re-marks it as theirs).
+ * @returns {number} how many chess the dress now covers
  */
 export function restoreDefaultSkins() {
-  const before = Object.keys(skinsStore.get().entries).length;
-  savePref(SKINS_DEFAULT_PREF, false);   // let the seed run again
-  installDefaultSkins();
-  return Object.keys(skinsStore.get().entries).length - before;
+  const seeded = defaultSkins();
+  const auto = new Set();
+  for (const chessId of Object.keys(seeded)) {
+    // a chess the player dressed themselves is theirs: only chess with no entry at all become "auto" again
+    if (!Object.hasOwn(skinsStore.get().entries, chessId)) auto.add(chessId);
+  }
+  writeAutoSeeded(auto);
+  return auto.size;
 }
 
 /**
@@ -145,13 +186,17 @@ export function setSkins(entries) {
   skinsStore.set({ entries: next });
 }
 
-/** Choose a skin for one operator. */
+/** Choose a skin for one operator. A pick made by hand is never "auto", so 一键装备 off will not hide it. */
 export function setSkin(chessId, skinId) {
+  const auto = readAutoSeeded();
+  if (auto.delete(chessId)) writeAutoSeeded(auto);
   setSkins({ ...skinsStore.get().entries, [chessId]: skinId });
 }
 
 /** Drop one operator's choice (it goes back to its default model). */
 export function clearSkin(chessId) {
+  const auto = readAutoSeeded();
+  if (auto.delete(chessId)) writeAutoSeeded(auto);
   const next = { ...skinsStore.get().entries };
   delete next[chessId];
   setSkins(next);
@@ -167,7 +212,16 @@ export function clearSkin(chessId) {
  *
  * Components must still subscribe (that is what `useSkin` is for): this function cannot repaint anything on its own.
  */
-export const skinFor = (chessId) => (skinsVisible() ? (skinsStore.get().entries[chessId] || null) : null);
+export const skinFor = (chessId) => {
+  if (!skinsVisible()) return null;                                             // 设置 → 显示皮肤
+  const entry = skinsStore.get().entries[chessId] || null;
+  if (!entry) return null;
+  // 设置 → 一键装备皮肤: an entry the DRESS put there is only worn while the dress is on. The player's own picks are
+  // never in this set, so this is the whole precedence rule: 显示皮肤 decides whether any skin shows at all, and 一键
+  // 装备 decides only whether the automatic ones count. Nothing is deleted either way.
+  if (!skinsAutoEquip() && autoSeededCache.has(chessId)) return null;
+  return entry;
+};
 
 const str = (v) => (typeof v === 'string' && v ? v : null);
 
@@ -246,10 +300,12 @@ function useSettingsVersion() {
 export function useSkin(chessId) {
   const id = str(chessId);
   const entries = useStore((s) => s.entries, shallowEqual, skinsStore);
-  // subscribed, not read once: flipping the switch must repaint what is already on screen
+  // subscribed, not read once: flipping EITHER switch must repaint what is already on screen
   useSettingsVersion();
-  if (!skinsVisible()) return null;
-  return (id && entries[id]) || null;
+  // resolved through `skinFor` rather than re-deriving it here: one place decides what is worn (the view switch, then
+  // the dress switch on top), so a component and a plain caller can never disagree about the same chess
+  void entries;
+  return id ? skinFor(id) : null;
 }
 
 /** The global switch alone, as a subscription (a component that shows no per-operator art still needs to repaint). */
