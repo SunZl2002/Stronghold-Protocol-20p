@@ -25,15 +25,24 @@ export const TEXT_SIZES = Object.freeze(['sm', 'md', 'lg', 'xl']);
 /** keys: the in-match shortcuts' key map (ui/gameLogic/shortcuts.js; settings → 快捷键). voiceLang: VOICE_LANGS.
  *  textSize: TEXT_SIZES (css/theme.css `--t`, applied by ui/settings.js applyTextSize). ammoCount: 设置「弹药数量」 — the
  *  rounds left / the magazine under an ammo skill's bar (render/units.js; PR #552), off by default: the official HUD has no
- *  such number (the maintainer's decision of 2026-10-13). */
-export const DEFAULT_SETTINGS = Object.freeze({ bgm: 0.6, sfx: 0.8, voice: 0.8, voiceLang: 'cn', voiceOverrides: Object.freeze({}), muted: false, damageNumbers: true, officialDamageNumbers: false, ammoCount: false, quality: 'high', textSize: 'sm', keys: DEFAULT_HOTKEYS });
+ *  such number (the maintainer's decision of 2026-10-13).
+ *
+ *  skinsOn / skinsAutoEquip (the owner's request of 2026-10-14, settings → 干员皮肤):
+ *   - `skinsOn` is the GLOBAL VIEW switch: off means this browser draws every operator's own art, wherever a skin
+ *     would have been drawn (cards, rosters, the battlefield) — including OTHER players' skins, which is what makes it
+ *     a display setting rather than a preference about one's own operators. It never touches the stored choices.
+ *   - `skinsAutoEquip` is D037's one-click dress: on (the default) a browser that has never chosen seeds one skin per
+ *     operator. Turning it off stops seeding AND stops an already-seeded set from being worn, so a player can look at
+ *     plain operators while other players' skins still show (that needs `skinsOn`).
+ */
+export const DEFAULT_SETTINGS = Object.freeze({ bgm: 0.6, sfx: 0.8, voice: 0.8, voiceLang: 'cn', voiceOverrides: Object.freeze({}), muted: false, damageNumbers: true, officialDamageNumbers: false, ammoCount: false, quality: 'high', textSize: 'sm', skinsOn: true, skinsAutoEquip: true, keys: DEFAULT_HOTKEYS });
 const QUALITIES = ['high', 'medium', 'low'];
 
 /**
  * Sanitize persisted settings.
  * @param {any} raw
  * @returns {{ bgm: number, sfx: number, voice: number, voiceLang: 'cn'|'jp', voiceOverrides: Record<string, string>, muted: boolean, damageNumbers: boolean, officialDamageNumbers: boolean, ammoCount: boolean, quality: 'high'|'medium'|'low',
- *   textSize: 'sm'|'md'|'lg'|'xl', keys: Record<'refresh'|'freeze'|'levelUp'|'retreat'|'sell'|'ready', string> }}
+ *   textSize: 'sm'|'md'|'lg'|'xl', skinsOn: boolean, skinsAutoEquip: boolean, keys: Record<'refresh'|'freeze'|'levelUp'|'retreat'|'sell'|'ready', string> }}
  */
 export function sanitizeSettings(raw) {
   const r = isObj(raw) ? raw : {};
@@ -50,6 +59,8 @@ export function sanitizeSettings(raw) {
     ammoCount: typeof r.ammoCount === 'boolean' ? r.ammoCount : DEFAULT_SETTINGS.ammoCount,
     quality: QUALITIES.includes(r.quality) ? r.quality : DEFAULT_SETTINGS.quality,
     textSize: TEXT_SIZES.includes(r.textSize) ? r.textSize : DEFAULT_SETTINGS.textSize,
+    skinsOn: typeof r.skinsOn === 'boolean' ? r.skinsOn : DEFAULT_SETTINGS.skinsOn,
+    skinsAutoEquip: typeof r.skinsAutoEquip === 'boolean' ? r.skinsAutoEquip : DEFAULT_SETTINGS.skinsAutoEquip,
     keys: sanitizeHotkeys(r.keys),
   };
 }

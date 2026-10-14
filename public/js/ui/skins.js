@@ -13,6 +13,7 @@
 // sees your skin.
 
 import { createStore, loadPref, savePref, useStore, shallowEqual } from '../store.js';
+import { useReducer, useLayoutEffect } from '../../vendor/hooks.module.js';
 import { data } from '../data.js';
 import { chessSkinPortraitUrl, chessSkinAvatarUrl, chessPortraitUrl, chessAvatarUrl } from './assetUrls.js';
 
@@ -75,6 +76,7 @@ export function defaultSkins(store = data) {
  * @returns {boolean} whether it seeded anything
  */
 export function installDefaultSkins() {
+  if (!skinsAutoEquip()) return false;   // 一键装备 off: never dress, and never seed a later reload either
   if (loadPref(SKINS_DEFAULT_PREF, false)) return false;
   // all three, because the default map is keyed by chess id: the catalogue and the manifest alone yield nothing
   if (data.status('skins') !== 'ready' || data.status('assets') !== 'ready' || data.status('chess') !== 'ready') return false;
@@ -82,6 +84,49 @@ export function installDefaultSkins() {
   savePref(SKINS_DEFAULT_PREF, true);
   if (Object.keys(seeded).length) setSkins({ ...seeded, ...skinsStore.get().entries }); // an existing pick wins
   return true;
+}
+
+/**
+ * Drop the one-click dress (settings → 一键装备皮肤 switched off).
+ *
+ * Removes every skin that `installDefaultSkins` would have seeded for the CURRENT catalogue — i.e. the defaults —
+ * and leaves anything the player picked by hand. It cannot tell the two apart in the stored map (both are just an
+ * entry), so it removes exactly the set a fresh seed would have produced: a hand-picked skin that happens to be the
+ * same default is indistinguishable and goes too, which is the honest reading of "关闭一键装备" (the player can pick
+ * it again, and the picker is one click away).
+ *
+ * Keeps the seeded marker so a later reload does not resurrect the defaults, and returns how many it removed.
+ * @returns {number}
+ */
+export function clearDefaultSkins() {
+  const defaults = defaultSkins();
+  const next = { ...skinsStore.get().entries };
+  let removed = 0;
+  for (const chessId of Object.keys(defaults)) {
+    if (Object.hasOwn(next, chessId) && next[chessId] === defaults[chessId]) { delete next[chessId]; removed++; }
+  }
+  if (removed) setSkins(next);
+  // and while the switch is off, never seed again (installDefaultSkins would otherwise re-add them on the next load)
+  savePref(SKINS_DEFAULT_PREF, true);
+  return removed;
+}
+
+/**
+ * Put the one-click dress back (settings → 一键装备皮肤 switched on again).
+ *
+ * Re-seeds the defaults that `clearDefaultSkins` removed, on top of whatever the player has now. `installDefaultSkins`
+ * cannot do it alone: its one-seed-per-browser marker is already set (turning the switch off sets it on purpose, so a
+ * reload cannot resurrect the defaults behind the player's back), which is why the marker is cleared first here — the
+ * player just asked for the dress, so the "this browser has made its choice" guard no longer applies.
+ *
+ * A hand-picked skin still wins over the default for that operator (`an existing pick wins` in installDefaultSkins).
+ * @returns {number} how many defaults came back
+ */
+export function restoreDefaultSkins() {
+  const before = Object.keys(skinsStore.get().entries).length;
+  savePref(SKINS_DEFAULT_PREF, false);   // let the seed run again
+  installDefaultSkins();
+  return Object.keys(skinsStore.get().entries).length - before;
 }
 
 /**
@@ -112,13 +157,82 @@ export function clearSkin(chessId) {
   setSkins(next);
 }
 
-/** The skin this browser picked for an operator, or null. */
-export const skinFor = (chessId) => skinsStore.get().entries[chessId] || null;
+/**
+ * The skin this browser picked for an operator, or null.
+ *
+ * THE global view switch is applied here, at the single read point, so every caller — a component through `useSkin`,
+ * a plain function like `portraitFor`, the canvas renderer, `fallbackField`'s paint-time read — obeys it without
+ * repeating the test. The store itself keeps the choices: turning the switch back on restores them, and nothing is
+ * sent to the server differently because of a display setting.
+ *
+ * Components must still subscribe (that is what `useSkin` is for): this function cannot repaint anything on its own.
+ */
+export const skinFor = (chessId) => (skinsVisible() ? (skinsStore.get().entries[chessId] || null) : null);
 
 const str = (v) => (typeof v === 'string' && v ? v : null);
 
 /**
- * Re-render a component when THIS operator's skin choice changes, and return it.
+ * The global view switch (settings → 干员皮肤, `skinsOn`), read as a POLICY injected by ui/settings.js.
+ *
+ * Why not import the settings store here: ui/settings.js reaches this module through
+ * gameComponents.js (`skins.js → settings.js → gameComponents.js → skins.js`), so importing it would close a cycle.
+ * settings.js calls this once at module scope instead, which keeps the dependency one-way.
+ *
+ * Default true so a browser that never loaded the settings module (a unit test, a partial bundle) behaves exactly as
+ * it did before the switch existed.
+ */
+let skinsShown = () => true;
+/** @param {() => boolean} fn whether this browser draws skins at all */
+export function setSkinsPolicy(fn) {
+  if (typeof fn === 'function') skinsShown = fn;
+}
+
+/**
+ * The one-click dress switch (settings → 均装备皮肤, `skinsAutoEquip`), the same injected-policy pattern as above.
+ * Default true: D037's behaviour is what a browser that never loaded settings should keep.
+ */
+let skinsAuto = () => true;
+/** @param {() => boolean} fn whether this browser dresses its operators automatically */
+export function setSkinsAutoPolicy(fn) {
+  if (typeof fn === 'function') skinsAuto = fn;
+}
+
+/** Whether the one-click dress is on (settings → 一键装备皮肤). */
+export function skinsAutoEquip() {
+  try { return skinsAuto() !== false; } catch { return true; }
+}
+
+/** Whether this browser draws skins at all (the global switch). */
+export function skinsVisible() {
+  try { return skinsShown() !== false; } catch { return true; }
+}
+
+/**
+ * A cheap "the settings changed" subscription: force a re-render whenever the policy version moves.
+ *
+ * `setSkinsPolicy` is injected exactly once, so watching a version counter is what makes the switch live — a
+ * component that only read `skinsVisible()` at render time would keep the art it was drawn with until something else
+ * repainted it (the same class of bug as the unsubscribed card).
+ */
+let policyVersion = 0;
+const policySubs = new Set();
+export function bumpSkinsPolicy() {
+  policyVersion++;
+  for (const fn of [...policySubs]) { try { fn(policyVersion); } catch { /* a listener must not break the bump */ } }
+}
+
+/** Re-render on every `bumpSkinsPolicy` (the settings store calls it when the switch moves). */
+function useSettingsVersion() {
+  const [, force] = useReducer((c) => c + 1, 0);
+  useLayoutEffect(() => {
+    policySubs.add(force);
+    return () => policySubs.delete(force);
+  }, []);
+}
+
+/**
+ * Re-render a component when THIS operator's skin choice or the global switch changes, and return the skin to draw —
+ * `null` when skins are switched off, so every caller falls back to the operator's own art without knowing why.
  *
  * `portraitFor`/`avatarFor` read `skinFor` directly, which makes them pure but INVISIBLE to a component's own
  * subscriptions: a roster row subscribes to the loadout store (its skills, its modules) and nothing re-renders it
@@ -132,7 +246,16 @@ const str = (v) => (typeof v === 'string' && v ? v : null);
 export function useSkin(chessId) {
   const id = str(chessId);
   const entries = useStore((s) => s.entries, shallowEqual, skinsStore);
+  // subscribed, not read once: flipping the switch must repaint what is already on screen
+  useSettingsVersion();
+  if (!skinsVisible()) return null;
   return (id && entries[id]) || null;
+}
+
+/** The global switch alone, as a subscription (a component that shows no per-operator art still needs to repaint). */
+export function useSkinsVisible() {
+  useSettingsVersion();
+  return skinsVisible();
 }
 
 /**

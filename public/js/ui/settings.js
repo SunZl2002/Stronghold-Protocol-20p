@@ -27,6 +27,7 @@ import { LangToggle, machineTranslationNote } from './lang.js';
 import { t, tc, N_ } from '../../../shared/i18n.js';
 import { errorCount, currentBattle, diagnosticsText } from '../diag.js';
 import { copyText } from './clipboard.js';
+import { setSkinsPolicy, setSkinsAutoPolicy, bumpSkinsPolicy, clearDefaultSkins, restoreDefaultSkins } from './skins.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -56,9 +57,25 @@ audio.setVoiceLang(settingsStore.get().voiceLang, settingsStore.get().voiceOverr
 // before the first render (main.js boot renders after its imports ran): the stored step is on screen without a flash
 applyTextSize(settingsStore.get().textSize);
 
+// 干员皮肤: hand ui/skins.js the global view switch (and its own subscription hook) as a POLICY. Injected rather than
+// imported because this module reaches skins.js through gameComponents.js — importing it back would close a cycle.
+setSkinsPolicy(() => settingsStore.get().skinsOn !== false);
+setSkinsAutoPolicy(() => settingsStore.get().skinsAutoEquip !== false);
+// `skinsAutoEquip` is the one-click dress (D037): while it is on, a browser that has never chosen wears a skin per
+// operator; turning it off drops the seeded set. A player's own later pick is theirs either way — the picker writes
+// through `setSkin`, which this does not touch — so the switch only governs the DEFAULTS.
+settingsStore.subscribe((s, prev) => {
+  if (s.skinsOn === prev.skinsOn && s.skinsAutoEquip === prev.skinsAutoEquip) return;
+  bumpSkinsPolicy();
+  if (prev.skinsAutoEquip && !s.skinsAutoEquip) clearDefaultSkins();
+  else if (!prev.skinsAutoEquip && s.skinsAutoEquip) restoreDefaultSkins();
+});
+
 /** @param {Partial<ReturnType<typeof sanitizeSettings>>} patch */
 export function updateSettings(patch) {
   settingsStore.set(sanitizeSettings({ ...settingsStore.get(), ...patch }));
+  // the skin switches are read by components through skins.js: nudge them even when only those moved
+  if ('skinsOn' in patch || 'skinsAutoEquip' in patch) bumpSkinsPolicy();
 }
 
 /** Preact hook: current settings. */
@@ -268,6 +285,12 @@ export function SettingsModal({ open, onClose }) {
       <p class="set-hint">${t('只显示达到官方暴击条件的红色数字。关闭时仍显示每一次命中。')}</p>
       <${Toggle} label=${t('弹药数量')} micro="AMMO COUNT" value=${s.ammoCount} onChange=${(v) => updateSettings({ ammoCount: v })} />
       <p class="set-hint">${t('弹药类技能开启时，在弹药条下方显示剩余弹药 / 总弹药数（如 13/14）。官方界面没有这个数字。')}</p>
+      <${Toggle} label=${t('显示皮肤')} micro="OPERATOR SKINS" value=${s.skinsOn} onChange=${(v) => updateSettings({ skinsOn: v })} />
+      <p class="set-hint" data-testid="skins-on-note">${t('关闭后全场干员都显示原皮，包括其他玩家装备的皮肤。')}</p>
+      <${Toggle} label=${t('一键装备皮肤')} micro="AUTO-EQUIP SKINS" value=${s.skinsAutoEquip} onChange=${(v) => updateSettings({ skinsAutoEquip: v })} />
+      <p class="set-hint" data-testid="skins-auto-note">${s.skinsOn
+        ? t('开启时每个干员自动穿上已实装的皮肤；关闭后只显示原皮，但仍能看到其他玩家装备的皮肤。')
+        : t('「显示皮肤」已关闭，全场都显示原皮。')}</p>
       <div class="set-row">
         <span class="set-row__label">${t('画面质量')}<${MicroLabel}>QUALITY<//></span>
         <div class="set-seg" role="radiogroup">

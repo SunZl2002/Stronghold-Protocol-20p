@@ -7,7 +7,7 @@ import { useEffect, useState } from '../../vendor/hooks.module.js';
 import { html, MicroLabel } from './components.js';
 import { useStore, shallowEqual } from '../store.js';
 import { data } from '../data.js';
-import { skinsStore, availableSkins, loadSkinData, setSkin, clearSkin } from './skins.js';
+import { skinsStore, availableSkins, loadSkinData, setSkin, clearSkin, skinsVisible } from './skins.js';
 import { t } from '../../../shared/i18n.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
@@ -57,11 +57,17 @@ export function SkinSection({ chess }) {
   const chosen = s.entries[chessId] || null;
   const defaultArt = data.get('assets')?.chars?.[charId]?.avatar || null;
 
+  // 全局开关关掉时，这里的选择仍然会被保存，只是画面上看不到 —— 说明白，免得以为坏了
+  const notice = !skinsVisible()
+    ? html`<p class="set-hint" data-testid="skin-hidden-note">${t('设置里的「显示皮肤」已关闭，选择会保存但暂不显示。')}</p>`
+    : null;
+
   return html`<section class="lo-sec lo-sec--skin" data-testid="skin-section">
     <header class="lo-sec__head">
       <h3>${t('皮肤')}<${MicroLabel}>SKIN<//></h3>
       <span class="lo-sec__note">${t('{n} 款可选', { n: list.length })}</span>
     </header>
+    ${notice}
     <div class="lo-skins" role="radiogroup" aria-label=${t('选择皮肤')}>
       <button type="button" role="radio" aria-checked=${chosen ? 'false' : 'true'} data-skin=""
         class=${cx('lo-skin', 'lo-skin--default', !chosen && 'is-on')} onClick=${() => clearSkin(chessId)}>

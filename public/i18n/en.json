@@ -1439,5 +1439,11 @@
   "无法获取在线名单，请稍后重试。": "Could not load the online roster. Try again later.",
   "查看在线玩家": "View online players",
   "第 {n} 回合": "Round {n}",
-  "点开查看当前在线的玩家：在线人数为当前已连接的人类玩家，不含 AI。": "Open the list of players online now. The count covers connected human players, not AI."
+  "点开查看当前在线的玩家：在线人数为当前已连接的人类玩家，不含 AI。": "Open the list of players online now. The count covers connected human players, not AI.",
+  "显示皮肤": "Show skins",
+  "关闭后全场干员都显示原皮，包括其他玩家装备的皮肤。": "Off draws every operator's own art, including the skins other players equipped.",
+  "一键装备皮肤": "Auto-equip skins",
+  "开启时每个干员自动穿上已实装的皮肤；关闭后只显示原皮，但仍能看到其他玩家装备的皮肤。": "On dresses every operator in an installed skin automatically. Off shows your own operators plain, while other players' skins still show.",
+  "「显示皮肤」已关闭，全场都显示原皮。": "「Show skins」 is off, so everything is drawn plain.",
+  "设置里的「显示皮肤」已关闭，选择会保存但暂不显示。": "「Show skins」 is off in the settings: the choice is saved but not drawn yet."
 }
