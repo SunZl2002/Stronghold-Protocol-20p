@@ -103,6 +103,13 @@
 .scard__water .bglyph { width: 100%; height: 100%; }
 .scard__art { position: absolute; right: -.14rem; top: 0; height: 100%; width: auto; max-width: none; object-fit: cover; pointer-events: none;
   -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 88%); mask-image: linear-gradient(180deg, #000 55%, transparent 88%); }
+/* A skin AVATAR standing in for a missing portrait (41 of the 174 skins: upstream ships a model and an avatar but no
+   `charpor` file). The art box is 0.5:1 while an avatar is 1:1, and NO crop of a square fits that: measured side by
+   side at the card's real size, `cover` leaves a strip of hair and one eye, and any upscaling softens it further. So
+   the whole square is kept, at its native size, centred — smaller than a portrait and with empty space around it, but
+   the character is readable and nothing is blurred. A white background is deliberately NOT painted behind it: the card
+   keeps its own gradient, so the empty space reads as framing rather than a thumbnail. */
+.scard__art--square { width: 100%; height: auto; object-fit: contain; object-position: 50% 50%; top: 50%; transform: translateY(-50%); }
 .scard__top { position: absolute; left: .06rem; right: .06rem; top: .06rem; display: flex; align-items: flex-start; justify-content: space-between; z-index: 2; }
 .scard__price { position: absolute; left: 50%; top: 0; transform: translateX(-50%); filter: drop-shadow(0 1px 3px #000); }
 .scard__free { position: absolute; left: 50%; top: .02rem; transform: translateX(-50%); font-family: var(--font-num); font-weight: 700; font-size: .16rem; letter-spacing: .1em; color: var(--text-on-mint); background: var(--mint-400); padding: 0 .1rem; clip-path: polygon(.08rem 0, calc(100% - .08rem) 0, 100% 50%, calc(100% - .08rem) 100%, .08rem 100%, 0 50%); }

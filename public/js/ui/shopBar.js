@@ -101,12 +101,17 @@ export function ChessCard({ slot, idx, priv, frozen = false, reason = null, free
   const lo = si ? standInLoadout(si, LOOKUPS.getChess, data.get('backups')) : c ? chessLoadout(c, priv?.loadout, dr ? diyGetter(LOOKUPS.getChess, priv, diyData) : LOOKUPS.getChess, { ops: priv?.ops ?? null, effects: data.get('effects') }) : null;
   const tap = () => { if (onTap) onTap(idx); else if (!disabled) onBuy(idx); else onDetail(slot.id, 'chess', hint); };
   const name = `${c?.name || t('干员')}${si ? t('（{note}）', { note: standInForText(c0.name) }) : ''}`;
+  // A skin with a model but no portrait (34 of the dressed chess) falls back to its 180x180 AVATAR. The card's art box
+  // is 0.5:1, so `object-fit: cover` would crop that square and blow it up ~1.5x — the upscaled, half-cut face the
+  // owner spotted. `scard__art--square` keeps the whole square at its native size instead.
+  const artSrc = chessSkinPortraitUrl(m, c, skinId) || chessPortraitUrl(m, c);
+  const artIsAvatar = !!artSrc && artSrc.includes('/skin_avatar/');
   const card = html`<button type="button" class=${cx('scard', `scard--t${tier}`, frozen && 'is-frozen', disabled && 'is-disabled', willMerge && 'is-merge', armed && 'is-armed', si && 'is-standin')}
       onClick=${tap} onContextMenu=${(e) => { e.preventDefault(); onDetail(slot.id, 'chess', hint); }}
       aria-label=${`${t('{name}，价格 {price}', { name, price: slot.price })}${armed ? (disabled ? t('，无法购买') : t('，再次点击确认')) : ''}`} aria-pressed=${onTap ? String(!!armed) : undefined}>
     <span class="scard__bg" aria-hidden="true"></span>
     <span class="scard__water" aria-hidden="true">${bonds[0] ? html`<${BondGlyph} bondId=${bonds[0]} />` : null}</span>
-    <${Img} src=${chessSkinPortraitUrl(m, c, skinId) || chessPortraitUrl(m, c)} class="scard__art" />
+    <${Img} src=${artSrc} class=${cx('scard__art', artIsAvatar && 'scard__art--square')} />
     <span class="scard__top">
       <${TierChip} tier=${tier} size="md" />
       <${PriceHex} slot=${slot} free=${free} poor=${reason === t('资金不足')} />

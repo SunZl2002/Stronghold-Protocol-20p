@@ -48,6 +48,7 @@ import { moduleBadge, fullTraitText } from './loadoutModel.js';
 import { t, tc, N_ } from '../../../shared/i18n.js';
 import { audio } from '../audio.js';
 import { tokenVariantFor } from './gameLogic/loadout.js';
+import { SkinSection } from './skinPicker.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 
@@ -301,7 +302,7 @@ export function traitText(c, golden, lo) {
  * such as 休整期结束时 and what it does) right under the header, visible without scrolling; the class trait (特性) and
  * the stats next; then the skill, the elite's module, the equipped items (the player's own build) and the talents.
  */
-export const CHESS_SECTIONS = Object.freeze(['head', 'garrison', 'trait', 'stats', 'skill', 'module', 'equip', 'talents', 'actions']);
+export const CHESS_SECTIONS = Object.freeze(['head', 'skin', 'garrison', 'trait', 'stats', 'skill', 'module', 'equip', 'talents', 'actions']);
 
 /**
  * Sprite key (ui `garrisonTypeIcon/…`, small variant) of a 特质's type chip: the garrison's own official
@@ -451,6 +452,14 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
         <${BondChips} bondIds=${bondIds} bonds=${bonds} off=${offBonds} onBond=${onBond} granted=${grantedIds} />
       </div>
     </div>`;
+  // 干员皮肤: the same picker the 干员调配 detail shows, on the CARD the player actually has open mid-match — including
+  // one opened from the shop, so a skin can be chosen where the operator is being bought. The choice is keyed by chess
+  // id (`skinFor`), and the picker writes only local state (ui/skins.js): no protocol, so no `editable` gate — that one
+  // asks whether the BOARD may be edited (and goes false the moment the player readies up), which has nothing to do
+  // with what this browser draws. What it does need is that the card is OURS: on a teammate's unit `foreignSkin`
+  // carries THEIR skin, and this store has no say over it.
+  const ownCard = !foreignSkin && !!c?.chessId;
+  blocks.skin = ownCard ? html`<${SkinSection} key="skin" chess=${c} />` : null;
   blocks.garrison = garrison ? html`<${GarrisonBlock} key="garrison" garrison=${garrison} m=${m} />` : null;
   blocks.trait = body.trait?.desc ? html`<p key="trait" class="dtrait"><${Icon} name="info" /><${RichText} text=${traitText(body, golden, lo)} /></p>` : null;
   // (`fr` is the body the unit fights with — a stand-in's record for a 补位 chess; `chess` is only the range's fallback)
