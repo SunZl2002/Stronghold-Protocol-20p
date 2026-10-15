@@ -15,6 +15,13 @@ globalThis.fetch = async (url) => {
   const name = String(url).split('/').pop();
   try { const body = readFileSync(path.join(ROOT, 'data', name), 'utf8'); return { ok: true, status: 200, json: async () => JSON.parse(body) }; } catch { return { ok: false, status: 404, json: async () => ({}) }; }
 };
+// RosterRow and ModuleInfo call useSkin / useState at their top level (night batch of 2026-10-14), so they are
+// MOUNTED through the minimal DOM instead of called; see test/helpers/dom.js.
+import { installMiniDom, mountVNode } from '../helpers/dom.js';
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
 const { RosterRow, RosterHead, statsPreview, LoadoutStats, ModuleInfo } = await import('../../public/js/screens/loadout.js');
 const { CultivationSelects, CultivationSection, cultivateName } = await import('../../public/js/screens/cultivation.js');
 const { DiyPanelView } = await import('../../public/js/screens/diy.js');
@@ -37,7 +44,7 @@ const hasClass = (v, c) => typeof v?.props?.class === 'string' && v.props.class.
 const find = (tree, pred) => [...walk(tree)].filter(pred);
 const textOf = (v) => (v == null || typeof v === 'boolean' ? '' : typeof v !== 'object' ? String(v) : Array.isArray(v) ? v.map(textOf).join('') : textOf(v.props?.children));
 
-const row = (props) => RosterRow({ m: null, chess: get(INSIDE), golden: get(get(INSIDE).goldenId), entries: {}, ops: {}, selected: false, onPick: () => {}, onChange: () => {}, onOps: () => {}, ...props });
+const row = (props) => mountVNode(preact, RosterRow, { m: null, chess: get(INSIDE), golden: get(get(INSIDE).goldenId), entries: {}, ops: {}, selected: false, onPick: () => {}, onChange: () => {}, onOps: () => {}, ...props });
 
 test('a row: portrait / name pick, three skill slots (an empty one for a two-skill chess), 不装备 first, the equipped ones pressed', () => {
   const picks = [];

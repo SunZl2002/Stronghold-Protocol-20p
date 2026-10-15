@@ -36,6 +36,13 @@ const { pendingLoss, liveLp, ownLeaks, pendingTip, tempInfo, tempReadyReason, Re
 const { rowLp } = await import('../../public/js/ui/teamPanel.js');
 const { LpTower, GAME_FILES } = await import('../../public/js/ui/gameComponents.js');
 const { tempRowFrame, tempRowRule } = await import('../../public/js/ui/underframe.js');
+// ChessDetail calls useSkin and returns one vnode per CHESS_SECTIONS entry (night batch of 2026-10-14), so it is
+// MOUNTED and the section list names its blocks; see helpers/dom.js.
+import { installMiniDom, mountVNodes } from '../helpers/dom.js';
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
 const { ChessDetail, CHESS_SECTIONS, garrisonTypeIconKey } = await import('../../public/js/ui/detailPanel.js');
 const { ChoiceView, pickBusy } = await import('../../public/js/ui/choiceOverlay.js');
 const { Button, Spinner } = await import('../../public/js/ui/components.js');
@@ -285,15 +292,20 @@ describe('8: 特质 right under the detail card\'s header', () => {
   test('华法琳\'s normal and elite cards show the 7 / 14 layer caps (GitHub #175)', async () => {
     await data.loadAll('chess', 'garrisons', 'assets', 'bonds', 'items');
     for (const [id, cap] of [['chess_char_4_26_a', 7], ['chess_char_4_26_b', 14]]) {
-      const blocks = ChessDetail({ chess: data.lookup('chess', id), piece: null, editable: false, bonds: [], loadout: null });
+      // the section names have to skip what renders nothing here (no 模组 for 华法琳, no 装备 without a piece, no
+      // 行动 on a read-only card) — CHESS_SECTIONS.map(...).filter(Boolean) drops those, so a plain positional list
+      // would name every later block one place too early.
+      const blocks = mountVNodes(preact, ChessDetail, { chess: data.lookup('chess', id), piece: null, editable: false, bonds: [], loadout: null }, { list: CHESS_SECTIONS, absent: ['module', 'equip', 'actions'] });
       const block = blocks.find((b) => b.key === 'garrison');
-      const rich = [...walk(block.type(block.props))].find((n) => n.props?.text != null);
-      assert.match(rich.props.text, new RegExp(`每场战斗至多${cap}层`));
+      // the block is mounted, so assert on the text it draws (the RichText source prop is not in the markup)
+      assert.match(textOf(block), new RegExp(`每场战斗至多${cap}层`));
     }
   });
 
   test('the block order', () => {
-    assert.deepEqual(CHESS_SECTIONS, ['head', 'garrison', 'trait', 'stats', 'skill', 'module', 'equip', 'talents', 'actions']);
+    // 'skin' joined the list between 技能 and 模组 with the operator-skin section (D041, night batch of 2026-10-14);
+    // test/docs-consistency.test.js guards the same shape.
+    assert.deepEqual(CHESS_SECTIONS, ['head', 'garrison', 'trait', 'stats', 'skill', 'skin', 'module', 'equip', 'talents', 'actions']);
   });
 
   test('a rendered operator card: header, then 特质 (trigger + description), then the rest in CHESS_SECTIONS order', async () => {
@@ -302,20 +314,27 @@ describe('8: 特质 right under the detail card\'s header', () => {
     assert.ok(c && c.garrisonIds && c.garrisonIds[0]);
     const g = data.lookup('garrisons', c.garrisonIds[0]);
     assert.equal(g.eventType, 'SERVER_PREP_FIN');
-    const blocks = ChessDetail({ chess: c, piece: { uid: 7, kind: 'chess', id: c.chessId, golden: true, items: [] }, editable: false, onSell() {}, bonds: [], loadout: null, onBond: null });
+    const blocks = mountVNodes(preact, ChessDetail, { chess: c, piece: { uid: 7, kind: 'chess', id: c.chessId, golden: true, items: [] }, editable: false, onSell() {}, bonds: [], loadout: null, onBond: null }, { list: CHESS_SECTIONS, absent: ['actions'] }, { 1: { garrison: g } });
     const keys = blocks.map((b) => b.key);
-    assert.deepEqual(keys, ['head', 'garrison', 'trait', 'stats', 'skill', 'module', 'equip', 'talents']);
+    // what this card actually draws, in order: 特质 right under the header, the skin section between 技能 and 模组,
+    // and no 行动 (the card is not editable here)
+    assert.deepEqual(keys, ['head', 'garrison', 'trait', 'stats', 'skill', 'skin', 'module', 'equip', 'talents']);
     assert.equal(blocks[1].props.garrison, g, 'the operator\'s own garrison');
     // the garrison block itself: the 特质 label, the trigger chip and the description
-    const gb = blocks[1].type(blocks[1].props);
+    const gb = blocks[1];   // mounted: the block IS the parsed component's output element
     assert.ok(hasClass(gb, 'dgarrison'));
     assert.ok(textOf(gb).includes('特质'));
     assert.ok(textOf(gb).includes(g.eventTypeDesc));
-    const rich = [...walk(gb)].find((n) => n.props?.text != null);
-    assert.equal(rich.props.text, g.descRaw || g.desc);
+    // the block received `garrison` as a prop, which the markup cannot carry, so it comes back through the mounting
+    // override; the description itself is read from the text the block draws (rich-text markers are markup by then).
+    assert.equal(gb.props.garrison, g, 'the block was given the garrison record');
+    // the description is drawn somewhere in the block (rich-text markers are markup by now, so match its own first
+    // run of CJK text rather than the whole raw source)
+    const descHead = String(g.descRaw || g.desc || '').replace(/<@[^>]*>/g, '').slice(0, 6);
+    assert.ok(descHead.length > 0 && textOf(gb).includes(descHead), `its description is drawn (${descHead})`);
     // an operator without a garrison (a summon's chess record may have none) simply starts with the trait
-    const bare = ChessDetail({ chess: { ...c, garrisonIds: [] }, piece: null, editable: false, bonds: [], loadout: null });
-    assert.deepEqual(bare.map((b) => b.key), ['head', 'trait', 'stats', 'skill', 'module', 'talents']);
+    const bare = mountVNodes(preact, ChessDetail, { chess: { ...c, garrisonIds: [] }, piece: null, editable: false, bonds: [], loadout: null }, { list: CHESS_SECTIONS, absent: ['garrison', 'equip', 'actions'] });
+    assert.deepEqual(bare.map((b) => b.key), ['head', 'trait', 'stats', 'skill', 'skin', 'module', 'talents']);
   });
 
   test('the 特质 chip carries the garrison\'s official type icon (eventTypeIcon) — the spoked 特异化 glyph only on 特异化', async () => {
@@ -337,9 +356,9 @@ describe('8: 特质 right under the detail card\'s header', () => {
     const c = data.lookup('chess', 'chess_char_3_04_b');
     const g = data.lookup('garrisons', c.garrisonIds[0]);
     assert.equal(g.eventTypeDesc, '整备能力');
-    const blocks = ChessDetail({ chess: c, piece: null, editable: false, bonds: [], loadout: null });
+    const blocks = mountVNodes(preact, ChessDetail, { chess: c, piece: null, editable: false, bonds: [], loadout: null }, CHESS_SECTIONS);
     const gb = blocks.find((b) => b.key === 'garrison');
-    const img = [...walk(gb.type(gb.props))].find((n) => hasClass(n, 'dgarrison__icon'));
+    const img = [...walk(gb)].find((n) => hasClass(n, 'dgarrison__icon'));
     assert.match(String(img.props.src), /garrisonTypeIcon\/s_icon_gold\.png$/);
   });
 

@@ -26,7 +26,14 @@ globalThis.fetch = async (url) => {
   }
 };
 
-const { ChessDetail, RangeGrid, cardRangeGrid, rangeGridStyle, FIELD_WIDE_CELLS, RANGE_FIT } = await import('../../public/js/ui/detailPanel.js');
+// ChessDetail calls useSkin and returns one vnode per CHESS_SECTIONS entry (night batch of 2026-10-14), so it is
+// MOUNTED and the section list names its blocks; see helpers/dom.js.
+import { installMiniDom, mountVNodes } from '../helpers/dom.js';
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
+const { ChessDetail, RangeGrid, cardRangeGrid, rangeGridStyle, FIELD_WIDE_CELLS, RANGE_FIT, CHESS_SECTIONS } = await import('../../public/js/ui/detailPanel.js');
 const { rangeGridBox } = await import('../../public/js/ui/gameLogic.js');
 const { data } = await import('../../public/js/data.js');
 
@@ -34,7 +41,7 @@ function* walk(v) {
   if (Array.isArray(v)) { for (const x of v) yield* walk(x); return; }
   if (!v || typeof v !== 'object') return;
   yield v;
-  if (typeof v.type === 'function' && v.type.name === 'RangeGrid') { yield* walk(v.type(v.props)); return; }
+  // RangeGrid used to need a manual call to see inside it; mounting renders it for real, so the generic walk suffices.
   yield* walk(v.props?.children);
 }
 const hasClass = (v, c) => typeof v?.props?.class === 'string' && v.props.class.split(/\s+/).includes(c);
@@ -63,7 +70,7 @@ test('the battle card\'s 攻击范围 follows 烛煌 S3: 10 tiles (3-1) before, 
   const { before, during } = blazeLive();
   assert.equal(before.range.length, 10);
   assert.equal(during.range.length, 13);
-  const stats = (live) => ChessDetail({ chess: c, piece: null, editable: false, bonds: [], loadout: null, live }).find((b) => b.key === 'stats');
+  const stats = (live) => mountVNodes(preact, ChessDetail, { chess: c, piece: null, editable: false, bonds: [], loadout: null, live }, CHESS_SECTIONS).find((b) => b.key === 'stats');
   assert.equal(onCells(stats(before)), 10, 'the base range');
   assert.equal(onCells(stats(during)), 13, 'the S3 range on the card');
   assert.equal(onCells(stats(null)), 10, 'no live entry: the record\'s attack range');
@@ -95,7 +102,7 @@ test('a whole-field skill (纯烬艾雅法拉 S3 "攻击范围扩大至整个战
   h.step();
   const live = { ...unitStatsEntry(u, u._s), src: 'battle' };
   assert.ok(live.range.length >= FIELD_WIDE_CELLS);
-  const stats = ChessDetail({ chess: data.lookup('chess', id), piece: null, editable: false, bonds: [], loadout: null, live }).find((b) => b.key === 'stats');
+  const stats = mountVNodes(preact, ChessDetail, { chess: data.lookup('chess', id), piece: null, editable: false, bonds: [], loadout: null, live }, CHESS_SECTIONS).find((b) => b.key === 'stats');
   assert.ok([...walk(stats)].some((n) => hasClass(n, 'rgrid-all')), '全场');
 });
 
@@ -120,12 +127,14 @@ test('远牙 S3 光羽箭 (default, "攻击范围改为前方无限长的直线"
   const box = rangeGridBox(live.range);
   assert.equal(box.cols, 21);
   assert.equal(box.rows, 1);
-  const stats = ChessDetail({ chess: data.lookup('chess', id), piece: null, editable: false, bonds: [], loadout: null, live }).find((b) => b.key === 'stats');
+  const stats = mountVNodes(preact, ChessDetail, { chess: data.lookup('chess', id), piece: null, editable: false, bonds: [], loadout: null, live }, CHESS_SECTIONS).find((b) => b.key === 'stats');
   const grid = [...walk(stats)].find((n) => hasClass(n, 'rgrid'));
   assert.ok(grid, 'drawn, not named');
   assert.equal(onCells(stats), 21, 'the whole line, her own tile included');
-  assert.match(grid.props.style, /--rg:max\(1px, min\(\.14rem, calc\(\(6 \* \.14rem \+ 10px\) \/ 21\)/, 'cells shrunk to the 6-column width');
-  assert.match(grid.props.style, /gap:0/);
+  // The value the component wrote ("gap:0;--rg:max(...)") is re-serialized by the DOM ("gap: 0; --rg: ..."), so match
+  // the numbers, not the spacing.
+  assert.match(grid.props.style, /--rg:\s*max\(1px, min\(\.14rem, calc\(\(6 \* \.14rem \+ 10px\) \/ 21\)/, 'cells shrunk to the 6-column width');
+  assert.match(grid.props.style, /gap:\s*0/);
 });
 
 test('rangeGridStyle: the attack ranges of the records keep the .14rem cells; only a grid beyond RANGE_FIT (6 columns, 7 rows) shrinks them', async () => {

@@ -722,7 +722,14 @@ describe('keyboard & settings', () => {
   test('sanitizeSettings', () => {
     assert.deepEqual(sanitizeSettings(null), { ...DEFAULT_SETTINGS });
     assert.deepEqual(sanitizeSettings({ bgm: 3, sfx: -1, voice: 2, muted: 'yes', damageNumbers: false, quality: 'ultra' }),
-      { bgm: 1, sfx: 0, voice: 1, voiceLang: 'cn', voiceOverrides: {}, muted: false, damageNumbers: false, officialDamageNumbers: false, ammoCount: false, quality: 'high', textSize: 'sm', keys: { ...DEFAULT_SETTINGS.keys } },
+      // the whole sanitized shape: junk falls back to the default per field. `skinsOn` / `skinsAutoEquip` joined it with
+      // the operator-skin settings (D037/D040, night batch of 2026-10-14), alongside the earlier `ammoCount` / `keys`.
+      {
+        bgm: 1, sfx: 0, voice: 1, voiceLang: 'cn', voiceOverrides: {}, muted: false, damageNumbers: false,
+        officialDamageNumbers: false, ammoCount: false, quality: 'high', textSize: 'sm',
+        skinsOn: DEFAULT_SETTINGS.skinsOn, skinsAutoEquip: DEFAULT_SETTINGS.skinsAutoEquip,
+        keys: { ...DEFAULT_SETTINGS.keys },
+      },
       'a saved profile without `keys` (before 0.2.0) gets the default key map (test/ui/feedback5-hotkeys.test.js)');
     assert.equal(sanitizeSettings({ bgm: 0.5 }).voice, DEFAULT_SETTINGS.voice, 'a saved profile without `voice` gets the default');
     // 语音语言 (0.2.2): 中文 by default — a profile saved before it, or any other value, plays the Chinese dub

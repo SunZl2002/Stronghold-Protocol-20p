@@ -26,8 +26,15 @@ globalThis.fetch = async (url) => {
   }
 };
 
+// Components are MOUNTED, not called: LoadoutStats and ChessDetail both call useSkin at their top level (night
+// batch of 2026-10-14), and a hook needs the context only a real render installs. See test/helpers/dom.js.
+import { installMiniDom, mountVNode, mountVNodes } from '../helpers/dom.js';
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
 const { statsPreview, LoadoutStats } = await import('../../public/js/screens/loadout.js');
-const { ChessDetail, cardRangeGrid } = await import('../../public/js/ui/detailPanel.js');
+const { ChessDetail, cardRangeGrid, CHESS_SECTIONS } = await import('../../public/js/ui/detailPanel.js');
 const { fmtNum, attackInterval } = await import('../../public/js/ui/gameLogic.js');
 const { data } = await import('../../public/js/data.js');
 await data.loadAll('chess', 'garrisons', 'assets', 'bonds', 'items');
@@ -65,18 +72,25 @@ const statValues = (tree) => Object.fromEntries([...walk(tree)].filter((n) => ha
 const onCells = (tree) => [...walk(tree)].filter((n) => n.type === 'i' && hasClass(n, 'on')).length;
 const statsBlock = (tree) => [...walk(tree)].find((n) => hasClass(n, 'dstats-wrap'));
 /** The 特性 / 天赋 rows of the section: { k, name, text }. */
-const kitRows = (tree) => [...walk(tree)].filter((n) => hasClass(n, 'lo-minfo__row')).map((row) => {
-  const parts = [...walk(row)];
-  return {
-    k: textOf(parts.find((n) => hasClass(n, 'lo-minfo__k'))),
-    name: textOf(parts.find((n) => hasClass(n, 'lo-minfo__tname'))),
-    text: String(parts.find((n) => typeof n.type === 'function' && n.type.name === 'RichText')?.props.text ?? ''),
-  };
-});
+/**
+ * The kit rows of a mounted section. `k` and `name` come from the DOM; `text` is the RichText source of the row,
+ * which the markup cannot carry — the component receives `trait` / `talents` as props, so read them from there by
+ * row index (the trait row first, then one row per 天赋 in the same order the component maps them).
+ */
+const kitRows = (tree, pv) => {
+  const rows = [...walk(tree)].filter((n) => hasClass(n, 'lo-minfo__row'));
+  let talent = 0;
+  return rows.map((row, i) => {
+    const parts = [...walk(row)];
+    const k = textOf(parts.find((n) => hasClass(n, 'lo-minfo__k')));
+    const text = pv ? (i === 0 ? pv.trait : pv.talents?.[talent++]?.descRaw || pv.talents?.[talent - 1]?.desc || '') : '';
+    return { k, name: textOf(parts.find((n) => hasClass(n, 'lo-minfo__tname'))), text: String(text ?? '') };
+  });
+};
 
 const slot = (id) => { const base = get(id); return { base, golden: base.goldenId ? get(base.goldenId) : null }; };
 const preview = (id, level, entries = {}) => { const { base, golden } = slot(id); return statsPreview(base, golden, entries, level, get); };
-const section = (id, level, entries = {}, extra = {}) => { const { base, golden } = slot(id); return LoadoutStats({ base, golden, entries, level, onLevel() {}, getChess: get, ...extra }); };
+const section = (id, level, entries = {}, extra = {}) => { const { base, golden } = slot(id); return mountVNode(preact, LoadoutStats, { base, golden, entries, level, onLevel() {}, getChess: get, ...extra }); };
 /** The tiles of the 攻击范围 the card / section draws for a preview. */
 const rangeTiles = (pv) => cardRangeGrid(null, pv.record, pv.chess).length;
 
@@ -157,7 +171,10 @@ test('the section draws the detail card\'s own stats block: same eight values an
   ];
   for (const [id, level, entries] of cases) {
     const pv = preview(id, level, entries);
-    const card = ChessDetail({ chess: pv.chess, piece: null, editable: false, bonds: [], loadout: entries }).find((b) => b.key === 'stats');
+    // ChessDetail returns one vnode per CHESS_SECTIONS entry and calls useSkin, so it has to be MOUNTED (helpers/dom.js);
+    // the section list names the blocks, since preact keeps keys off the DOM node.
+    const card = mountVNodes(preact, ChessDetail, { chess: pv.chess, piece: null, editable: false, bonds: [], loadout: entries }, CHESS_SECTIONS)
+      .find((b) => b.key === 'stats');
     const mine = statsBlock(section(id, level, entries));
     const what = `${id} ${level} ${JSON.stringify(entries)}`;
     assert.ok(card && mine, what);
@@ -193,7 +210,7 @@ test('the eight stats shown are the record\'s: 生命上限 攻击 防御 法术
 });
 
 test('特性 and 天赋 follow the chosen module: 隐现\'s trait upgrade is MAR-X\'s only; 异客\'s talents are rewritten by her other module', () => {
-  const rows = (id, level, entries) => kitRows(section(id, level, entries));
+  const rows = (id, level, entries) => kitRows(section(id, level, entries), preview(id, level, entries));
   const { golden } = slot(INSIDE);
   const traitOf = (rs) => rs.find((r) => r.k === '特性');
   // default module: the class trait, then the module's added line (item 16.2 of 2026-10-06); 不装备: the plain class trait
@@ -241,7 +258,7 @@ test('the 普通 / 精锐 toggle: 精锐 is the shown variant, the tabs say so, 
   assert.match(cap(elite), /^数值含所选模组；不含技能发动、装备、盟约等局内加成$/);
   assert.match(cap(normal), /^普通干员没有模组，所选模组在「精锐」中生效；不含技能发动/);
   // a chess without an elite record: only 普通 is selectable and shown
-  const lone = LoadoutStats({ base: { ...slot(INSIDE).base, goldenId: null }, golden: null, entries: {}, level: 'elite', onLevel() {}, getChess: get });
+  const lone = mountVNode(preact, LoadoutStats, { base: { ...slot(INSIDE).base, goldenId: null }, golden: null, entries: {}, level: 'elite', onLevel() {}, getChess: get });
   assert.equal(lone.props['data-variant'], 'normal');
   assert.equal(tabs(lone)[1].props.disabled, true);
   assert.match(cap(lone), /^不含技能发动、装备、盟约等局内加成$/, 'nothing to point at without an elite');

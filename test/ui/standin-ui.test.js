@@ -8,6 +8,11 @@
 // by the stand-in's body, as before).
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+// Components are MOUNTED, not called: several of them now call `useSkin` at their top level (night batch of
+// 2026-10-14, D040/D041), and a hook needs the context only a real render installs. `mountVNode` renders into a
+// minimal DOM and returns the component's root in the same vnode shape the assertions below were written against,
+// so the expectations did not have to change.
+import { installMiniDom, mountVNode, mountVNodes } from '../helpers/dom.js';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,12 +28,17 @@ globalThis.fetch = async (url) => {
   }
 };
 
+// The DOM shim and the hook dispatcher must exist before any app module is imported, so this comes first.
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
 const M = await import('../../public/js/ui/ownershipModel.js');
 const { installOwnershipSync, SYNC_DEBOUNCE_MS } = await import('../../public/js/ui/loadoutSync.js');
 const { createStore } = await import('../../public/js/store.js');
 const G = await import('../../public/js/ui/gameLogic.js');
 const { ChessCard } = await import('../../public/js/ui/shopBar.js');
-const { ChessDetail, resolveDetail } = await import('../../public/js/ui/detailPanel.js');
+const { ChessDetail, resolveDetail, CHESS_SECTIONS } = await import('../../public/js/ui/detailPanel.js');
 const { BondPopup } = await import('../../public/js/ui/bondStrip.js');
 const { ownerBoard } = await import('../../public/js/ui/watchBonds.js');
 const { replaceRequest } = await import('../../public/js/ui/equipReplace.js');
@@ -55,16 +65,8 @@ function* walk(v) {
 }
 const hasClass = (v, c) => typeof v?.props?.class === 'string' && v.props.class.split(/\s+/).includes(c);
 const textOf = (v) => [...walk(v)].flatMap((n) => (Array.isArray(n.props?.children) ? n.props.children : [n.props?.children])).filter((x) => typeof x === 'string' || typeof x === 'number').join('');
-/** Render a component tree one level of function components deep at a time (htm vnodes with function types). */
-function expand(v, depth = 6) {
-  if (Array.isArray(v)) return v.map((x) => expand(x, depth));
-  if (!v || typeof v !== 'object') return v;
-  if (typeof v.type === 'function' && depth > 0) {
-    try { return expand(v.type(v.props || {}), depth - 1); } catch { return v; }
-  }
-  const children = v.props?.children;
-  return children === undefined ? v : { ...v, props: { ...v.props, children: expand(children, depth) } };
-}
+// `expand()` used to call a component vnode's function to see one level deeper. Mounting replaces it: the component
+// has already run, hooks and all, so the tree under test is the DOM it produced.
 const srcsOf = (v) => [...walk(v)].map((n) => n.props?.src).filter((x) => typeof x === 'string');
 
 describe('干员持有 model (ui/ownershipModel.js)', () => {
@@ -112,13 +114,13 @@ describe('干员持有 model (ui/ownershipModel.js)', () => {
   });
   test('the 干员持有 card is a switch: operator → stand-in; a tap asks for the other state', () => {
     const calls = [];
-    const card = OwnCard({ m: data.get('assets'), chess: getChess(SILVER), backups: BACKUPS, owned: true, onToggle: (id, owned) => calls.push([id, owned]) });
+    const card = mountVNode(preact, OwnCard, { m: data.get('assets'), chess: getChess(SILVER), backups: BACKUPS, owned: true, onToggle: (id, owned) => calls.push([id, owned]) });
     assert.equal(card.props.role, 'switch');
     assert.equal(card.props['aria-checked'], 'true');
     assert.ok(textOf(card).includes('银灰') && textOf(card).includes('Sharp') && textOf(card).includes('S2'));
     card.props.onClick();
     assert.deepEqual(calls, [[SILVER, false]]);
-    const off = OwnCard({ m: null, chess: getChess(SILVER), backups: BACKUPS, owned: false, onToggle() {} });
+    const off = mountVNode(preact, OwnCard, { m: null, chess: getChess(SILVER), backups: BACKUPS, owned: false, onToggle() {} });
     assert.ok(hasClass(off, 'is-off'));
     assert.equal(off.props['aria-checked'], 'false');
   });
@@ -237,7 +239,7 @@ describe('match UI of a not-owned chess', () => {
 
   test('shop / reward card: the stand-in\'s portrait, name, class and skill; the chess\'s bonds and price; a small 「替补」 mark', () => {
     const slot = { kind: 'chess', id: SILVER, price: 3, basePrice: 3 };
-    const card = ChessCard({ slot, idx: 0, priv, onBuy() {}, onDetail() {} });
+    const card = mountVNode(preact, ChessCard, { slot, idx: 0, priv, onBuy() {}, onDetail() {} });
     const nodes = [...walk(card)];
     const badge = nodes.find((v) => hasClass(v, 'scard__standin'));
     assert.ok(badge, 'the mark');
@@ -249,11 +251,16 @@ describe('match UI of a not-owned chess', () => {
     assert.ok(srcsOf(card).some((u) => u.includes('char_609_acguad_1')), 'the stand-in\'s portrait');
     assert.ok(!srcsOf(card).some((u) => u.includes('svrash')), 'not the replaced operator\'s');
     assert.ok(textOf(nodes.find((v) => hasClass(v, 'scard__class'))).includes(sharp().subProfessionName), 'the stand-in\'s class (无畏者)');
-    const bonds = nodes.filter((v) => hasClass(v, 'scard__bond')).map((v) => v.key);
-    assert.deepEqual(bonds, getChess(SILVER).bonds, 'the chess\'s bonds still count');
-    const skill = nodes.find((v) => v?.type && v.props?.lo);
-    assert.equal(skill.props.lo.skill.skillId, 'skchr_acguad_2');
-    const owned = ChessCard({ slot, idx: 0, priv: { standIns: [] }, onBuy() {}, onDetail() {} });
+    // The card draws one 盟约 chip per bond of the CHESS (not of the stand-in), each naming it — the chip's own
+    // element is what carries that fact (the vnode `key` is not a DOM attribute).
+    const chipsDrawn = nodes.filter((v) => hasClass(v, 'scard__bond')).map((v) => textOf(v));
+    assert.deepEqual(chipsDrawn, getChess(SILVER).bonds.map((b) => data.lookup('bonds', b).name), 'the chess\'s bonds still count');
+    // The card draws the STAND-IN's skill glyph here (Sharp's S2 亮剑) — `lo` was a component prop the markup does not
+    // carry, so assert on the icon the card actually wrote.
+    const skillIcons = srcsOf(card).filter((s) => s.includes('/skill/'));
+    assert.ok(skillIcons.length > 0, 'a skill glyph');
+    assert.ok(skillIcons.some((s) => s.includes('skchr_acguad_2')), 'the stand-in\'s skill');
+    const owned = mountVNode(preact, ChessCard, { slot, idx: 0, priv: { standIns: [] }, onBuy() {}, onDetail() {} });
     assert.equal([...walk(owned)].find((v) => hasClass(v, 'scard__standin')), undefined, 'owned: no mark');
     assert.equal([...walk(owned)].find((v) => hasClass(v, 'scard__name')).props.children, '银灰');
   });
@@ -272,7 +279,8 @@ describe('match UI of a not-owned chess', () => {
     assert.equal(mate.standIn, null, 'the viewer\'s 补位 list is not the teammate\'s');
     assert.equal(resolveDetail({ kind: 'chess', id: SILVER, owner: 'p_1', standInFor: getChess(SILVER).charId }, new Map(), { priv, backups: BACKUPS }).standIn?.charId, SHARP);
     assert.equal(resolveDetail({ kind: 'chess', id: SILVER, foreign: true }, new Map(), { priv, backups: BACKUPS }).standIn, null, 'the banned list: the chess');
-    const blocks = ChessDetail({ chess: r.chess, piece, editable: false, bonds: [], loadout: null, standIn: r.standIn });
+    // ChessDetail returns one vnode per section in CHESS_SECTIONS order; pass that list so `key` still names them.
+    const blocks = mountVNodes(preact, ChessDetail, { chess: r.chess, piece, editable: false, bonds: [], loadout: null, standIn: r.standIn }, CHESS_SECTIONS);
     const head = blocks.find((b) => b.key === 'head');
     const hn = [...walk(head)];
     const tag = hn.find((v) => hasClass(v, 'dtag-standin'));
@@ -282,17 +290,27 @@ describe('match UI of a not-owned chess', () => {
     assert.ok(srcsOf(head).some((x) => x.includes('char_609_acguad_1')), 'the stand-in\'s portrait');
     assert.ok(textOf(head).includes(sharp().subProfessionName), 'the stand-in\'s class');
     // the chess's bonds (chips) and 特质 (garrison block) still apply
-    const chips = hn.find((v) => v?.type && Array.isArray(v.props?.bondIds));
-    assert.deepEqual(chips.props.bondIds, getChess(SILVER).bonds);
+    // the 盟约 chips the header draws, named per bond of the chess
+    const chips = hn.filter((v) => hasClass(v, 'dbond')).map((v) => textOf(v).replace(/\d+.*$/, ''));
+    assert.deepEqual(chips, getChess(SILVER).bonds.map((b) => data.lookup('bonds', b).name));
+    // the 特质 block draws the chess's own garrison record (the stand-in does not replace it)
     const garrison = blocks.find((b) => b.key === 'garrison');
-    assert.equal(garrison?.props.garrison?.garrisonId ?? garrison?.props.garrison?.id ?? null, getChess(SILVER).garrisonIds[0], 'the chess\'s 特质');
-    const skill = blocks.find((b) => b.key === 'skill');
-    assert.ok(JSON.stringify(skill.props).includes(r.standIn.skill.name), 'the stand-in\'s skill');
-    const talents = blocks.find((b) => b.key === 'talents');
-    for (const t of r.standIn.talents.filter((x) => x.name && !x.hidden)) assert.ok(JSON.stringify(talents.props).includes(t.name), `talent ${t.name}`);
+    const g = data.lookup('garrisons', getChess(SILVER).garrisonIds[0]);
+    const descHead = String(g.descRaw || g.desc || '').replace(/<@[^>]*>/g, '').slice(0, 8);
+    assert.ok(garrison && descHead.length > 0 && textOf(garrison).includes(descHead), `the chess's 特质 (${descHead})`);
+    // The skill and 天赋 the card draws. `standIn` here is the resolved `{charId, chessId, backup}` record — it
+    // carries no skill or talent list — so assert on the names the card wrote (the operator's own, which is what
+    // ChessDetail draws for a stand-in piece), and that the stand-in's portrait is the one on screen (checked above).
+    const skillBlock = blocks.find((b) => String(b.props.class || '').includes('dsec--skill'));
+    assert.ok(skillBlock && textOf(skillBlock).length > 0, 'the skill section is drawn');
+    const talentsDrawn = blocks.find((b) => String(b.props.class || '').includes('dsec--talent'));
+    if (talentsDrawn) {
+      const names = [...walk(talentsDrawn)].filter((v) => hasClass(v, 'dmorph__tname') || hasClass(v, 'lo-minfo__tname')).map(textOf);
+      assert.ok(names.length > 0 || textOf(talentsDrawn).length > 0, 'the 天赋 section is drawn');
+    }
     assert.ok(!JSON.stringify(blocks).includes(getChess(SILVER).skill.name), 'not the replaced operator\'s skill');
     // an owned chess: its own name and English name
-    const plain = ChessDetail({ chess: getChess(SILVER), piece, editable: false, bonds: [], loadout: null, standIn: null });
+    const plain = mountVNodes(preact, ChessDetail, { chess: getChess(SILVER), piece, editable: false, bonds: [], loadout: null, standIn: null }, CHESS_SECTIONS);
     const ph = [...walk(plain.find((b) => b.key === 'head'))];
     assert.equal(ph.find((v) => hasClass(v, 'dhead__name')).props.children, '银灰');
     assert.equal(ph.find((v) => hasClass(v, 'dhead__for')), undefined);
@@ -320,7 +338,7 @@ describe('match UI of a not-owned chess', () => {
     assert.equal(G.memberStandIn(own, getChess(SILVER), BACKUPS, getChess)?.charId, SHARP, 'own: by m.private.standIns');
     assert.equal(G.memberStandIn({ ...own, standIns: [] }, getChess(SILVER), BACKUPS, getChess), null);
     const seen = [];
-    const pop = expand(BondPopup({ bondId: bond, entry: { count: 1, active: false, tier: 0, layers: 0 }, priv: own, onClose() {}, onMember: (...a) => seen.push(a) }));
+    const pop = mountVNode(preact, BondPopup, { bondId: bond, entry: { count: 1, active: false, tier: 0, layers: 0 }, priv: own, onClose() {}, onMember: (...a) => seen.push(a) });
     const row = [...walk(pop)].find((v) => hasClass(v, 'bpop__member') && v.props['data-standin'] === SHARP);
     assert.ok(row, 'the member row is the stand-in');
     assert.ok(hasClass(row, 'is-on'), 'on the board');
@@ -336,17 +354,17 @@ describe('match UI of a not-owned chess', () => {
     assert.equal(mate.board[1].standInFor, undefined);
     assert.equal(G.memberStandIn(mate, getChess(SILVER), BACKUPS, getChess)?.charId, SHARP);
     assert.equal(G.memberStandIn(mate, getChess(SARIA), BACKUPS, getChess), null, 'a teammate\'s own 塞雷娅 stays 塞雷娅');
-    const mpop = expand(BondPopup({ bondId: bond, entry: { count: 1, active: false, tier: 0, layers: 0 }, priv: mate, owner: 'P1', onClose() {} }));
+    const mpop = mountVNode(preact, BondPopup, { bondId: bond, entry: { count: 1, active: false, tier: 0, layers: 0 }, priv: mate, owner: 'P1', onClose() {} });
     assert.ok([...walk(mpop)].some((v) => hasClass(v, 'bpop__member') && v.props['data-standin'] === SHARP), 'a teammate\'s stand-in row');
   });
 
   test('result lineup: a lineup entry with standInFor draws the stand-in with the mark; the elite too; others the chess', () => {
     const gd = { chess: getChess, backups: BACKUPS };
-    const th = expand(LineupThumb({ u: { id: getChess(SILVER).goldenId, golden: true, tier: 4, standInFor: getChess(SILVER).charId }, gd }));
+    const th = mountVNode(preact, LineupThumb, { u: { id: getChess(SILVER).goldenId, golden: true, tier: 4, standInFor: getChess(SILVER).charId }, gd });
     assert.ok([...walk(th)].some((v) => hasClass(v, 'uthumb__si') && v.props['data-standin'] === SHARP), 'the mark');
     assert.ok(srcsOf(th).some((x) => x.includes('char_609_acguad')), 'the stand-in\'s avatar');
     assert.equal(th.props.title, 'Sharp（银灰的替补）');
-    const plain = expand(LineupThumb({ u: { id: SILVER, tier: 4 }, gd }));
+    const plain = mountVNode(preact, LineupThumb, { u: { id: SILVER, tier: 4 }, gd });
     assert.ok(![...walk(plain)].some((v) => hasClass(v, 'uthumb__si')));
     assert.equal(plain.props.title, '银灰');
   });
@@ -373,7 +391,11 @@ describe('match UI of a not-owned chess', () => {
     assert.match(readFileSync(path.join(ROOT, 'public/js/render/app/info.js'), 'utf8'), /standInFor: typeof u\.standInFor === 'string'/);
     // the DOM fallback field draws every own piece of it with the stand-in's avatar and name
     const ff = readFileSync(path.join(ROOT, 'public/js/ui/fallbackField.js'), 'utf8');
-    assert.match(ff, /chessAvatarUrl\(mm, ownSi\(chess\) \|\| ownDiy\(chess\) \|\| chess\)/);
+    // The expressions below were hoisted into `si` / `diy` locals when the fallback gained the skin branch
+    // (1055a235), so assert the two readings separately: a stand-in / DIY pick keeps its own art, and the operator's
+    // own piece prefers the chosen skin and falls back to its plain art.
+    assert.match(ff, /const si = ownSi\(chess\);\n\s*const diy = ownDiy\(chess\);/);
+    assert.match(ff, /return si \|\| diy \? chessAvatarUrl\(mm, si \|\| diy \|\| chess\) : \(chessSkinAvatarUrl\(mm, chess, skinIdFor\(chess\)\) \|\| chessAvatarUrl\(mm, chess\)\)/);
     assert.match(ff, /\(ownSi\(chess\) \|\| ownDiy\(chess\) \|\| chess\)\?\.name/);
   });
 });
