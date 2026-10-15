@@ -33,6 +33,9 @@ COPY tools ./tools
 COPY data ./data
 COPY public ./public
 COPY docs/research ./docs/research
+# 每次更新后自动公告本次更新内容: server/changelogAnnouncement.js reads this at startup and publishes the newest entry
+# once per distinct text. Without the file the image simply makes no update announcement (the feature degrades quietly).
+COPY CHANGELOG.md ./CHANGELOG.md
 RUN node tools/vendor.mjs \
  && if [ "$FETCH_ASSETS" = "1" ]; then \
       node tools/fetch-assets.mjs || echo "WARNING: art download incomplete; the image falls back to placeholder art"; \
@@ -53,6 +56,9 @@ COPY --from=build /app/data ./data
 COPY --from=build /app/public ./public
 # research tables: read by server/sim/nodeData.js as a fallback
 COPY --from=build /app/docs/research ./docs/research
+# 每次更新后自动公告本次更新内容: the update announcement reads this at boot (see server/changelogAnnouncement.js).
+# Rebuilt images therefore announce what changed; a restart of an unchanged image does not (the id is a content hash).
+COPY --from=build /app/CHANGELOG.md ./CHANGELOG.md
 
 USER node
 EXPOSE 3000

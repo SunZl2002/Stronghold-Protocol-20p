@@ -35,6 +35,7 @@ import { WS_MAX_PAYLOAD, createSessionStack, attachWebSocket } from './http/webs
 import { DATA_SHIM_JS, createStaticHandler } from './http/static.js';
 import { createPackRegistry } from './packs.js';
 import { createAnnouncementStore } from './announcements.js';
+import { publishChangelogAnnouncement } from './changelogAnnouncement.js';
 import { createAnnouncementNoticeMonitor } from './announcementNotices.js';
 import { createServerSettings } from './serverSettings.js';
 import { MIME, COMPRESSIBLE, acceptsGzip, pickEncoding, parseRange } from './http/files.js';
@@ -92,6 +93,11 @@ export async function startServer(opts = {}) {
     onChange: (next) => applySettings(next) });
   const { registry, lobby, network } = createSessionStack(opts, { data, log });
   const announcements = createAnnouncementStore({ dir: opts.announcementsDir, root: ROOT, log });
+  // 每次更新后自动公告本次更新内容: publish the newest CHANGELOG entry once per distinct text, so a rebuilt container
+  // shows what changed without anyone running a command. Idempotent (the id is a hash of the body) and never fatal — a
+  // build without the CHANGELOG just logs nothing. `opts.changelogAnnouncement === false` opts out; tests that assert an
+  // EMPTY announcement store use it, rather than keying off `quiet`, which is only a logging switch.
+  if (opts.changelogAnnouncement !== false) publishChangelogAnnouncement({ store: announcements, root: ROOT, log });
   const announcementNotices = createAnnouncementNoticeMonitor({ store: announcements, network, log });
   // content packs (docs/PACKS.md): scanned now — the start log names them — and again whenever their folders change
   const packs = createPackRegistry({ publicDir, dataDir, packsDir }, { log });

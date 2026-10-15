@@ -8,7 +8,9 @@ import { startServer } from '../server/index.js';
 
 async function withServer(run) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'sp-ann-http-'));
-  const srv = await startServer({ port: 0, host: '127.0.0.1', quiet: true, announcementsDir: dir });
+  // changelogAnnouncement: false — this server asserts the EMPTY-store response, and server/changelogAnnouncement.js
+  // otherwise publishes the repository's newest CHANGELOG entry at boot (每次更新后自动公告本次更新内容).
+  const srv = await startServer({ port: 0, host: '127.0.0.1', quiet: true, announcementsDir: dir, changelogAnnouncement: false });
   try { await run(srv); } finally { await srv.close(); rmSync(dir, { recursive: true, force: true }); }
 }
 
