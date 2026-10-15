@@ -34,12 +34,13 @@ function arm(enabled) {
   D.setDanmakuParticipants(() => null);
 }
 
-test('I014 聊天弹幕：默认关闭，且关闭时就是现在的行为（一条都不飘）', () => {
-  assert.equal(DEFAULT_SETTINGS.chatDanmaku, false, '默认必须是关闭');
-  // a profile saved BEFORE this key existed carries nothing: it must land on the default, not on true
-  assert.equal(sanitizeSettings({ bgm: 0.5 }).chatDanmaku, false, '老存档保持原行为');
-  assert.equal(sanitizeSettings({ chatDanmaku: true }).chatDanmaku, true, '开启能存住');
-  assert.equal(sanitizeSettings({ chatDanmaku: 'yes' }).chatDanmaku, false, '非布尔一律回默认');
+test('I014 聊天弹幕：默认开启；关掉后一条都不飘，且关掉能存住', () => {
+  assert.equal(DEFAULT_SETTINGS.chatDanmaku, true, '默认必须是开启（用户 2026-10-15 决定）');
+  // a profile saved BEFORE this key existed carries nothing: it lands on the default…
+  assert.equal(sanitizeSettings({ bgm: 0.5 }).chatDanmaku, true, '老存档跟着新默认走');
+  // …but a player who has already chosen keeps their choice, whichever way it went
+  assert.equal(sanitizeSettings({ chatDanmaku: false }).chatDanmaku, false, '关掉能存住');
+  assert.equal(sanitizeSettings({ chatDanmaku: 'yes' }).chatDanmaku, true, '非布尔一律回默认');
 
   arm(false);
   const id = D.pushDanmaku({ seq: 1, playerId: 'p_a', name: '甲', text: '喂' }, { matchId: 'm1' });

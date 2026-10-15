@@ -35,7 +35,7 @@ export const TEXT_SIZES = Object.freeze(['sm', 'md', 'lg', 'xl']);
  *     operator. Turning it off stops seeding AND stops an already-seeded set from being worn, so a player can look at
  *     plain operators while other players' skins still show (that needs `skinsOn`).
  */
-export const DEFAULT_SETTINGS = Object.freeze({ bgm: 0.6, sfx: 0.8, voice: 0.8, voiceLang: 'cn', voiceOverrides: Object.freeze({}), muted: false, damageNumbers: true, officialDamageNumbers: false, ammoCount: false, quality: 'high', textSize: 'sm', skinsOn: true, skinsAutoEquip: true, chatDanmaku: false, keys: DEFAULT_HOTKEYS });
+export const DEFAULT_SETTINGS = Object.freeze({ bgm: 0.6, sfx: 0.8, voice: 0.8, voiceLang: 'cn', voiceOverrides: Object.freeze({}), muted: false, damageNumbers: true, officialDamageNumbers: false, ammoCount: false, quality: 'high', textSize: 'sm', skinsOn: true, skinsAutoEquip: true, chatDanmaku: true, keys: DEFAULT_HOTKEYS });
 const QUALITIES = ['high', 'medium', 'low'];
 
 /**
@@ -61,9 +61,9 @@ export function sanitizeSettings(raw) {
     textSize: TEXT_SIZES.includes(r.textSize) ? r.textSize : DEFAULT_SETTINGS.textSize,
     skinsOn: typeof r.skinsOn === 'boolean' ? r.skinsOn : DEFAULT_SETTINGS.skinsOn,
     skinsAutoEquip: typeof r.skinsAutoEquip === 'boolean' ? r.skinsAutoEquip : DEFAULT_SETTINGS.skinsAutoEquip,
-    // chatDanmaku (I014): off by default, and OFF IS THE OLD BEHAVIOUR — a message only ever appears in the chat panel.
+    // chatDanmaku (I014): ON by default (the owner's decision of 2026-10-15 — a fly-by is the feature, so it ships on).
     // Anything that is not a boolean (including the `undefined` of a profile saved before this key existed) takes the
-    // default, so an existing browser sees no change at all until it deliberately turns the switch on.
+    // default; a profile that has already stored a boolean keeps what the player chose.
     chatDanmaku: typeof r.chatDanmaku === 'boolean' ? r.chatDanmaku : DEFAULT_SETTINGS.chatDanmaku,
     keys: sanitizeHotkeys(r.keys),
   };
