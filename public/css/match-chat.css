@@ -135,3 +135,40 @@
   .mchat-panel__head { padding-top: 4px; padding-bottom: 4px; }
   .mchat-panel__foot { padding-top: 5px; padding-bottom: 5px; }
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Chat danmaku (I014). A message crosses the board ONCE, over the match screen only.
+   `--danmaku-dur` MUST match DANMAKU_MS in ui/danmaku.js: the row is removed by its own `animationend`,
+   so a mismatch either cuts the crossing short or leaves the row parked on screen.
+   The layer is `pointer-events: none` — it must never eat a click meant for the board underneath.
+   --------------------------------------------------------------------------------------------- */
+.danmaku {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 8;
+  --danmaku-dur: 9000ms;
+}
+.danmaku__item {
+  position: absolute; top: calc(12% + var(--lane) * 2.05rem); left: 0;
+  display: flex; align-items: center; gap: .12rem; max-width: 70vw;
+  padding: .1rem .22rem .1rem .1rem; border-radius: 999px;
+  background: rgba(11, 15, 13, .82); border: 1px solid var(--line-2);
+  box-shadow: 0 .06rem .18rem rgba(0, 0, 0, .5);
+  white-space: nowrap; will-change: transform;
+  animation: danmaku-cross var(--danmaku-dur) linear forwards;
+}
+.danmaku__avatar { display: flex; flex: none; }
+.danmaku__name { font-size: max(.14rem, 11px); color: var(--mint-500); font-weight: 600; }
+.danmaku__text {
+  font-size: max(.14rem, 11px); color: var(--text-md);
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* Start fully off the right edge and end fully off the left, so nothing pops in or out mid-screen. */
+@keyframes danmaku-cross {
+  from { transform: translateX(100vw); }
+  to { transform: translateX(-100%); }
+}
+/* Motion sensitivity: keep the message readable instead of flying it (it still disappears on its own). */
+@media (prefers-reduced-motion: reduce) {
+  .danmaku__item { animation: danmaku-fade var(--danmaku-dur) linear forwards; left: 50%; transform: translateX(-50%); }
+  @keyframes danmaku-fade { from { opacity: 0; } 10% { opacity: 1; } 85% { opacity: 1; } to { opacity: 0; } }
+}
+

@@ -291,6 +291,8 @@ export function SettingsModal({ open, onClose }) {
       <p class="set-hint" data-testid="skins-auto-note">${s.skinsOn
         ? t('开启时每个干员自动穿上已实装的皮肤；关闭后只显示原皮，但仍能看到其他玩家装备的皮肤。')
         : t('「显示皮肤」已关闭，全场都显示原皮。')}</p>
+      <${Toggle} label=${t('聊天弹幕')} micro="CHAT DANMAKU" value=${s.chatDanmaku} onChange=${(v) => updateSettings({ chatDanmaku: v })} />
+      <p class="set-hint" data-testid="chat-danmaku-note">${t('开启后，别人发的聊天消息会以弹幕形式从头像旁飘过一次（带策略图标、名称和内容）。关闭则只在聊天框里显示。')}</p>
       <div class="set-row">
         <span class="set-row__label">${t('画面质量')}<${MicroLabel}>QUALITY<//></span>
         <div class="set-seg" role="radiogroup">

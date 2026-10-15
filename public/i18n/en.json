@@ -1445,5 +1445,7 @@
   "一键装备皮肤": "Auto-equip skins",
   "开启时每个干员自动穿上已实装的皮肤；关闭后只显示原皮，但仍能看到其他玩家装备的皮肤。": "On dresses every operator in an installed skin automatically. Off shows your own operators plain, while other players' skins still show.",
   "「显示皮肤」已关闭，全场都显示原皮。": "「Show skins」 is off, so everything is drawn plain.",
-  "已关闭": "Off"
+  "已关闭": "Off",
+  "聊天弹幕": "Chat danmaku",
+  "开启后，别人发的聊天消息会以弹幕形式从头像旁飘过一次（带策略图标、名称和内容）。关闭则只在聊天框里显示。": "When on, a chat message flies across the screen once beside the speaker's icon (strategy icon, name and text). When off it only appears in the chat panel."
 }

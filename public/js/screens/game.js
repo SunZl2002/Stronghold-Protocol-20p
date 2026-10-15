@@ -85,6 +85,7 @@ import { Ticker } from '../ui/ticker.js';
 import { EmoteWheel } from '../ui/emotes.js';
 import { MatchChatButton, MatchChatHost } from '../ui/matchChat.js';
 import { chatStore, chatActions } from '../matchChat.js';
+import { DanmakuLayer, setDanmakuEnabledPolicy, setDanmakuParticipants } from '../ui/danmaku.js';
 import { EffectsList } from '../ui/effectsList.js';
 import { CombatHud } from '../ui/combatHud.js';
 import { SettingsModal, settingsStore } from '../ui/settings.js';
@@ -150,10 +151,16 @@ export function GameScreen() {
     ${(away || autoplay) && !hasResult && mode !== 'result' && !ended ? html`<${AwayOverlay} />` : null}
     ${(away || autoplay) && !hasResult && mode !== 'result' && !ended ? html`<${MatchChatButton} class="mchat-away-entry" />` : null}
     ${ended && !hasResult && mode !== 'result' ? html`<${MatchEnded} />` : null}
-    ${!hasResult && mode !== 'result' && !ended ? html`<${MatchChatHost} phase=${pub.phase} away=${away || autoplay} />` : null}`;
+    ${!hasResult && mode !== 'result' && !ended ? html`<${MatchChatHost} phase=${pub.phase} away=${away || autoplay} />` : null}
+    ${!hasResult && mode !== 'result' && !ended ? html`<${DanmakuLayer} />` : null}`;
 }
 
 // ---- match screen ----------------------------------------------------------------------------------------
+
+// 聊天弹幕 (I014): hand ui/danmaku.js the settings switch as a POLICY. Injected rather than imported there because
+// danmaku.js reaches gameComponents.js, which reaches skins.js → settings.js — importing back would close the cycle.
+// Read live (not captured), so flipping the switch while a card is open takes effect on the next message.
+setDanmakuEnabledPolicy(() => settingsStore.get().chatDanmaku === true);
 
 /** A card of a unit of the battle on screen: a unit's, or a crate's / turret's (a device card with its `unitId`, #228). */
 const inBattleCard = (d) => d?.kind === 'unit' || (d?.kind === 'device' && d.device?.unitId != null);
@@ -168,6 +175,13 @@ function MatchScreen() {
   const emergency = useStore(emergencyActive);
   const emotes = useStore((s) => s.emotes);
   const chatOpen = useStore((s) => s.open, Object.is, chatStore);
+  // Chat danmaku (I014): hand the layer the participants of THIS match so a fly-by carries the speaker's 策略 icon, the
+  // same one its chat row shows. Re-published on every public update (cheap, and it picks up a band chosen mid-draft).
+  useEffect(() => {
+    const players = pub?.players;
+    setDanmakuParticipants(() => (Array.isArray(players)
+      ? new Map(players.map((p) => [p.playerId, p])) : null));
+  }, [pub]);
   const hasChat = useStore((s) => !!s.matchId, Object.is, chatStore);
   const roomSolo = useStore((s) => s.room?.mode === 'solo');
   const spectator = useStore((s) => isSpectating(s.room, s.me.playerId));
