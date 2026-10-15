@@ -120,6 +120,10 @@ export function DanmakuLayer() {
       // Same shape the chat row builds, so PlayerAvatar resolves the SAME strategy icon here and there.
       const participant = (participants && participants.get(m.playerId)) || {};
       const player = { ...participant, playerId: m.playerId, name: participant.name || m.name, seat: m.seat };
+      // A spectator is not a match participant: they live in room.spectators (playerId, name, connected) and are NOT in
+      // m.public.players, so they carry no `bandId` and PlayerAvatar falls back to their name's first character — the
+      // 「没选干员就只显示名称和内容」 path, reached for a different reason. The 观战 mark is the same msgid the chat row
+      // uses (ui/matchChat.js reads m.spectator too), so the two never disagree.
       return html`<div key=${m.id} class="danmaku__item" style=${`--lane:${m.lane}`}
         onAnimationEnd=${() => dropDanmaku(m.id)}>
         <span class="danmaku__avatar"><${PlayerAvatar} player=${player} size="sm" /></span>

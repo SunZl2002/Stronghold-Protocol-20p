@@ -112,6 +112,31 @@ test('I014 聊天弹幕：渲染出的每一行带头像槽、名称与内容', 
   assert.equal(mountVNode(preact, D.DanmakuLayer), null, '空了之后整层不渲染');
 });
 
+test('I014 聊天弹幕：观战者飘出来是「名称首字 + 名称 · 观战 + 内容」，没有策略图标', () => {
+  arm(true);
+  // A spectator is NOT a match participant: room.spectators carries { playerId, name, connected } and the match's
+  // public players[] does not list them at all, so there is no bandId to resolve. That is the 「没选干员就只显示名称
+  // 和内容」 path, reached for a different reason — pinned here so a later change cannot quietly start showing another
+  // player's strategy icon next to a spectator's words.
+  D.setDanmakuParticipants(() => new Map([['p_player', { name: '玩家', seat: 0, bandId: 'yanShip' }]]));
+  const id = D.pushDanmaku(
+    { seq: 1, playerId: 'p_spec', name: '观众', text: '打得不错', seat: null, spectator: true },
+    { matchId: 'm1' },
+  );
+  assert.ok(id > 0, '观战者的消息照样飘');
+
+  const node = mountVNode(preact, D.DanmakuLayer);
+  const json = JSON.stringify(node);
+  assert.match(json, /观众/, '有名称');
+  assert.match(json, /打得不错/, '有内容');
+  assert.match(json, /观战/, '带观战标记（与聊天行同一个 msgid）');
+  assert.match(json, /danmaku__avatar/, '头像槽仍在（退化成名称首字）');
+
+  const item = D.danmakuStore.get().items[0];
+  assert.equal(item.spectator, true, '观战标记被保留');
+  assert.equal(item.seat, null, '观战者没有席位');
+});
+
 test('I014 聊天弹幕：CSS 的时长与 JS 的常量一致（不一致会截断或留下停住的一行）', () => {
   const css = readFileSync(path.join(ROOT, 'public/css/match-chat.css'), 'utf8');
   const m = css.match(/--danmaku-dur:\s*(\d+)ms/);
