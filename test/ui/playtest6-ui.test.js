@@ -34,6 +34,14 @@ globalThis.fetch = async (url) => {
   }
 };
 
+// The cards are MOUNTED: ChessCard calls useSkin at its top level (night batch of 2026-10-14), and both cards in
+// this file go through the same `Card` variable below, so the call site mounts whichever one it was given.
+// See helpers/dom.js.
+import { installMiniDom, mountVNode } from '../helpers/dom.js';
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
 const { ChoiceView, resolveSpCard, cardText } = await import('../../public/js/ui/choiceOverlay.js');
 const { ChessCard, ItemCard } = await import('../../public/js/ui/shopBar.js');
 const { normalizeSp } = await import('../../public/js/ui/gameLogic.js');
@@ -49,6 +57,8 @@ function* walk(v) {
   yield* walk(v.props?.children);
 }
 const hasClass = (v, c) => typeof v?.props?.class === 'string' && v.props.class.split(/\s+/).includes(c);
+/** The text a mounted node draws (the adapted node keeps its element). */
+const textOf = (v) => v?.el?.textContent ?? '';
 const children = (v) => [v.props?.children].flat(Infinity).filter((x) => x && typeof x === 'object');
 
 await data.loadAll('items', 'effects', 'choices', 'assets', 'chess', 'bonds');
@@ -170,24 +180,26 @@ describe('10: a tap anywhere on the armed shop card buys (no inner target swallo
   for (const [kind, Card, slot] of [['operator', ChessCard, { kind: 'chess', id: chess.chessId, price: 3, basePrice: 3 }], ['item', ItemCard, { kind: 'item', id: item.id, price: 2, basePrice: 2 }]]) {
     test(`${kind} card: armed, the card is the only tap target in it (no ⓘ corner) and its tap confirms`, () => {
       const taps = [];
-      const v = Card({ slot, idx: 2, priv, armed: true, onTap: (i) => taps.push(['tap', i]), onBuy: (i) => taps.push(['buy', i]), onDetail: (id) => taps.push(['detail', id]) });
+      const v = mountVNode(preact, Card, { slot, idx: 2, priv, armed: true, onTap: (i) => taps.push(['tap', i]), onBuy: (i) => taps.push(['buy', i]), onDetail: (id) => taps.push(['detail', id]) });
       const nodes = [...walk(v)];
       assert.ok(!nodes.some((n) => hasClass(n, 'scard__detail')), 'no ⓘ corner on the card');
       const cl = clickables(v);
       assert.equal(cl.length, 1, 'one click handler: the card itself');
       assert.ok(hasClass(cl[0], 'scard') && hasClass(cl[0], 'is-armed'));
-      assert.ok(nodes.some((n) => n.type?.name === 'ArmedTag'), 'the 确认购买 strip');
+      // ArmedTag renders the strip; a mounted tree has no component vnode to name, so assert on what it draws —
+      // the strip element and its 确认购买 words.
+      assert.ok(nodes.some((n) => hasClass(n, 'scard__confirm') && textOf(n).includes('确认购买')), 'the 确认购买 strip');
       cl[0].props.onClick();
       assert.deepEqual(taps, [['tap', 2]], 'the second tap goes to the two-tap handler (ShopBar buys)');
     });
 
     test(`${kind} card: not armed, no inner target either; a card that cannot be bought now opens its detail`, () => {
       const taps = [];
-      const idle = Card({ slot, idx: 1, priv, onTap: (i) => taps.push(['tap', i]), onBuy: (i) => taps.push(['buy', i]), onDetail: (id) => taps.push(['detail', id]) });
+      const idle = mountVNode(preact, Card, { slot, idx: 1, priv, onTap: (i) => taps.push(['tap', i]), onBuy: (i) => taps.push(['buy', i]), onDetail: (id) => taps.push(['detail', id]) });
       assert.equal(clickables(idle).length, 1);
       clickables(idle)[0].props.onClick();
       // not editable (ready / round start): no two-tap, a reason — the tap shows the detail (the ⓘ did before)
-      const locked = Card({ slot, idx: 1, priv, reason: '已准备就绪，取消准备后才能操作', onBuy: (i) => taps.push(['buy', i]), onDetail: (id) => taps.push(['detail', id]) });
+      const locked = mountVNode(preact, Card, { slot, idx: 1, priv, reason: '已准备就绪，取消准备后才能操作', onBuy: (i) => taps.push(['buy', i]), onDetail: (id) => taps.push(['detail', id]) });
       const lockedNodes = [...walk(locked)];
       assert.ok(!lockedNodes.some((n) => hasClass(n, 'scard__detail')));
       const btn = lockedNodes.find((n) => hasClass(n, 'scard'));

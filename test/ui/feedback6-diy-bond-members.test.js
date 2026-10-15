@@ -24,6 +24,13 @@ globalThis.fetch = async (url) => {
   }
 };
 
+// BondPopup renders UnitThumb, which calls useSkin at its top level (night batch of 2026-10-14), so the popup is
+// MOUNTED: the old `expand()` called component functions directly and swallowed the hook failure in its catch.
+import { installMiniDom, mountVNode } from '../helpers/dom.js';
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
 const G = await import('../../public/js/ui/gameLogic.js');
 const { BondPopup } = await import('../../public/js/ui/bondStrip.js');
 const { resolveDetail } = await import('../../public/js/ui/detailPanel.js');
@@ -73,7 +80,7 @@ const privOf = (extra = {}) => ({
 });
 /** The member rows as the own popup reads them (the own getter: gameLogic/diy.js diyGetter). */
 const rowsOf = (bondId, priv) => G.bondMembers(DATA.bonds[bondId], priv, [], G.diyGetter(getChess, priv, D));
-const popup = (props) => expand(BondPopup({ entry: ENTRY, onClose() {}, ...props }));
+const popup = (props) => mountVNode(preact, BondPopup, { entry: ENTRY, onClose() {}, ...props });
 const memberButtons = (pop) => [...walk(pop)].filter((v) => hasClass(v, 'bpop__member'));
 const piece = (uid, id, at = null) => ({ uid, kind: 'chess', id, items: [], ...(at ? { row: at[0], col: at[1] } : {}) });
 

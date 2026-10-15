@@ -26,9 +26,16 @@ globalThis.fetch = async (url) => {
   }
 };
 
+// ChessCard and ChessDetail call useSkin at their top level (night batch of 2026-10-14), so they are MOUNTED;
+// ChessDetail returns one vnode per CHESS_SECTIONS entry, so the section list names its blocks. See helpers/dom.js.
+import { installMiniDom, mountVNode, mountVNodes } from '../helpers/dom.js';
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
 const { mergeTarget, mergeProgress } = await import('../../public/js/ui/gameLogic.js');
 const { ChessCard, armedSlotOf, armKey, mergeHint } = await import('../../public/js/ui/shopBar.js');
-const { ChessDetail, resolveDetail } = await import('../../public/js/ui/detailPanel.js');
+const { ChessDetail, resolveDetail, CHESS_SECTIONS } = await import('../../public/js/ui/detailPanel.js');
 const { data } = await import('../../public/js/data.js');
 const { DATA, makeMatch, give } = await import('../match/harness.js');
 
@@ -105,7 +112,7 @@ describe('gameLogic.mergeTarget (mirror of server board.js mergeTile)', () => {
 describe('shop bar: the merge tag and the armed card', () => {
   test('the 可晋升 tag says where the elite goes (the board copy\'s place / the hand)', () => {
     const slot = { kind: 'chess', id: A, price: 1, basePrice: 1 };
-    const tagOf = (priv) => [...walk(ChessCard({ slot, idx: 0, priv, onBuy() {}, onDetail() {} }))].find((v) => hasClass(v, 'scard__mergetag'));
+    const tagOf = (priv) => [...walk(mountVNode(preact, ChessCard, { slot, idx: 0, priv, onBuy() {}, onDetail() {} }))].find((v) => hasClass(v, 'scard__mergetag'));
     assert.equal(tagOf({ board: [onBoard(A, 10, 4)], hand: [inHand(A, 2)] })?.props.title, '精锐干员将出现在作战区原位置');
     assert.equal(tagOf({ board: [], hand: [inHand(A, 1), inHand(A, 2)] })?.props.title, '精锐干员将进入整备区');
     assert.equal(tagOf({ board: [], hand: [inHand(A, 1)] }), undefined, 'no tag before the merge');
@@ -123,13 +130,14 @@ describe('shop bar: the merge tag and the armed card', () => {
     assert.match(read('public/js/screens/game.js'), /onDetail=\$\{\(id, kind, hint\) => setDetail\(\{ kind: kind === 'item' \? 'item' : 'chess', id, hint: hint \|\| null(?:, tap: \+\+cardTap\.current)? \}\)\}/);
     const r = resolveDetail({ kind: 'chess', id: A, hint: mergeHint(board, A) }, new Map());
     assert.equal(r.hint, '精锐干员将出现在作战区原位置');
-    const blocks = ChessDetail({ chess: r.chess, piece: null, editable: false, bonds: [], loadout: null, hint: r.hint });
+    // the hint is spliced in at index 1, so name that block and let the sections shift by one
+    const blocks = mountVNodes(preact, ChessDetail, { chess: r.chess, piece: null, editable: false, bonds: [], loadout: null, hint: r.hint }, { at: 1, key: 'merge', list: CHESS_SECTIONS });
     assert.equal(blocks[0].key, 'head');
     assert.equal(blocks[1].key, 'merge', 'right under the header');
     assert.ok(hasClass(blocks[1], 'dhint'));
     const text = JSON.stringify(blocks[1].props.children);
     assert.ok(text.includes('可晋升：') && text.includes('精锐干员将出现在作战区原位置'), text);
-    assert.ok(!ChessDetail({ chess: r.chess, piece: null, editable: false, bonds: [], loadout: null }).some((b) => b.key === 'merge'), 'no hint, no line');
+    assert.ok(!mountVNodes(preact, ChessDetail, { chess: r.chess, piece: null, editable: false, bonds: [], loadout: null }, CHESS_SECTIONS).some((b) => b.key === 'merge'), 'no hint, no line');
   });
   test('an elite card never merges (server completesChessMerge refuses isGolden): no pips, no tag, no target tile', () => {
     const E = golden(A);
@@ -137,7 +145,7 @@ describe('shop bar: the merge tag and the armed card', () => {
     assert.equal(mergeProgress(priv, A, getChess).copies, 2);
     assert.equal(mergeProgress(priv, E, getChess).copies, 0);
     assert.equal(mergeTarget(priv, E, getChess), null);
-    const card = ChessCard({ slot: { kind: 'chess', id: E, price: 3, basePrice: 3 }, idx: 0, priv, onBuy() {}, onDetail() {} });
+    const card = mountVNode(preact, ChessCard, { slot: { kind: 'chess', id: E, price: 3, basePrice: 3 }, idx: 0, priv, onBuy() {}, onDetail() {} });
     const nodes = [...walk(card)];
     assert.equal(nodes.find((v) => hasClass(v, 'scard__mergetag')), undefined, 'no 可晋升 tag');
     assert.equal(nodes.find((v) => hasClass(v, 'scard__pips')), undefined, 'no 已拥有 pips');

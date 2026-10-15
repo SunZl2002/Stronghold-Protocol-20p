@@ -22,6 +22,12 @@ globalThis.fetch = async (url) => {
     return { ok: false, status: 404, json: async () => ({}) };
   }
 };
+// The cards call useSkin at their top level (night batch of 2026-10-14), so they are MOUNTED; see helpers/dom.js.
+import { installMiniDom, mountVNode } from '../helpers/dom.js';
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
 const { ChessCard, ItemCard, slotFrozen } = await import('../../public/js/ui/shopBar.js');
 const { data } = await import('../../public/js/data.js');
 await data.loadAll('items', 'effects', 'choices', 'assets', 'chess', 'bonds', 'garrisons');
@@ -61,7 +67,7 @@ describe('#354: the card the 猎头顾问 freezes shows its frost', () => {
     // the bar's frame and the button follow the toggle (off), each card follows its own slot
     for (const s of priv.shop.slots.filter(Boolean)) {
       const props = { slot: s, idx: 0, priv, frozen: slotFrozen(s, priv.shop.frozen), onBuy() {}, onDetail() {} };
-      const card = s.kind === 'item' ? ItemCard(props) : ChessCard(props);
+      const card = mountVNode(preact, s.kind === 'item' ? ItemCard : ChessCard, props);
       assert.equal(s.frozen ? iced(card) : bare(card), true, `${s.id}: ${s.frozen ? 'frost' : 'no frost'}`);
     }
     h.m.dispose();

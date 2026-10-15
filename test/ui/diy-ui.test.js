@@ -25,8 +25,15 @@ const M = await import('../../public/js/ui/diyModel.js');
 const { installDiySync, SYNC_DEBOUNCE_MS } = await import('../../public/js/ui/loadoutSync.js');
 const { createStore } = await import('../../public/js/store.js');
 const G = await import('../../public/js/ui/gameLogic.js');
+// Components that call useSkin at their top level (night batch of 2026-10-14) are MOUNTED; ChessDetail returns one
+// vnode per CHESS_SECTIONS entry, so the section list names its blocks. See helpers/dom.js.
+import { installMiniDom, mountVNode, mountVNodes } from '../helpers/dom.js';
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
 const { ChessCard } = await import('../../public/js/ui/shopBar.js');
-const { ChessDetail, resolveDetail } = await import('../../public/js/ui/detailPanel.js');
+const { ChessDetail, resolveDetail, CHESS_SECTIONS } = await import('../../public/js/ui/detailPanel.js');
 const { BondPopup } = await import('../../public/js/ui/bondStrip.js');
 const { ownerBoard } = await import('../../public/js/ui/watchBonds.js');
 const { diyPieces } = await import('../../public/js/screens/game/standInTags.js');
@@ -310,16 +317,24 @@ describe('match UI of a 自选 piece', () => {
   });
 
   test('shop / reward card: the operator\'s name and bonds, the 「自选」 badge, the pick\'s skill', () => {
-    const card = ChessCard({ slot: { kind: 'chess', id: T5A, price: 4, basePrice: 4 }, idx: 0, priv, onBuy() {}, onDetail() {} });
+    const card = mountVNode(preact, ChessCard, { slot: { kind: 'chess', id: T5A, price: 4, basePrice: 4 }, idx: 0, priv, onBuy() {}, onDetail() {} });
     const nodes = [...walk(card)];
     const badge = nodes.find((v) => hasClass(v, 'scard__diy'));
     assert.ok(badge);
     assert.equal(badge.props['data-diy'], SIEGE);
     assert.equal(badge.props.children, '自选');
     assert.equal(nodes.find((v) => hasClass(v, 'scard__name')).props.children, DATA.backups.units[SIEGE].name);
-    assert.ok(nodes.some((v) => v.props?.bondId === 'victoriaShip'), 'the derived bond');
-    assert.equal(nodes.find((v) => v?.type && v.props?.lo).props.lo.skill.skillId, 'skchr_siege_3');
-    const other = ChessCard({ slot: { kind: 'chess', id: T5A, price: 4, basePrice: 4 }, idx: 0, priv: { diy: {} }, onBuy() {}, onDetail() {} });
+    // The bonded glyph names its bond in the title (BondGlyph takes bondId as a prop, which the markup cannot carry).
+    // 推进之王 is 维多利亚 by its own bond, and 维式重锤's 维多利亚 is the one the 自选 pick brings — so the card must
+    // show that bond twice where a plain 推进之王 card shows it once.
+    const vici = data.lookup('bonds', 'victoriaShip')?.name;
+    const glyphs = card.$$('.bglyph').map((g) => g.getAttribute('title'));
+    assert.equal(glyphs.filter((x) => x === vici).length, 2, `the derived bond (${vici})`);
+    // The pick's skill is what the card draws: skchr_siege_3 belongs to the 自选 record only (the base 推进之王 card
+    // has no such skill), so its icon on this card proves the skill came from the pick. The plain card below must not
+    // show it.
+    assert.ok(card.$$('img').some((i) => (i.getAttribute('src') || '').includes('skchr_siege_3')), 'the pick\'s skill');
+    const other = mountVNode(preact, ChessCard, { slot: { kind: 'chess', id: T5A, price: 4, basePrice: 4 }, idx: 0, priv: { diy: {} }, onBuy() {}, onDetail() {} });
     assert.equal([...walk(other)].find((v) => hasClass(v, 'scard__diy')), undefined);
   });
 
@@ -333,7 +348,9 @@ describe('match UI of a 自选 piece', () => {
     assert.equal(resolveDetail({ kind: 'chess', id: T5A, foreign: true }, new Map(), { priv, backups: D.backups }).diy, undefined, 'the banned list / another player\'s card');
     const u = resolveDetail({ kind: 'unit', unit: { id: 3, uid: 33, side: 'ally', kind: 'op', defId: T6A, diy: { charId: SHARP, skillIndex: 2, uniEquipId: 'uniequip_002_acguad' } } }, new Map(), { priv: null, backups: D.backups });
     assert.equal(u.chess.charId, SHARP);
-    const blocks = ChessDetail({ chess: r.chess, piece, editable: false, bonds: [], loadout: priv.loadout, diy: r.diy });
+    // measured: this card draws head / trait / stats / skill / skin / module / equip / talents — 特质 lists a
+    // garrison-less record so CHESS_SECTIONS' 'garrison' block is null and filtered out, and 行动 is not editable
+    const blocks = mountVNodes(preact, ChessDetail, { chess: r.chess, piece, editable: false, bonds: [], loadout: priv.loadout, diy: r.diy }, { list: CHESS_SECTIONS, absent: ['garrison', 'actions'] });
     const head = blocks.find((b) => b.key === 'head');
     assert.equal([...walk(head)].find((v) => hasClass(v, 'dtag-diy'))?.props.children, '自选');
     assert.equal([...walk(head)].find((v) => hasClass(v, 'dhead__name')).props.children, DATA.backups.units[SIEGE].name);

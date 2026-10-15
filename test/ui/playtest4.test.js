@@ -35,8 +35,15 @@ globalThis.fetch = async (url) => {
   }
 };
 
+// ChessDetail calls useSkin and returns one vnode per CHESS_SECTIONS entry (night batch of 2026-10-14), so it is
+// MOUNTED; ItemDetail calls no hook and keeps its direct call. See helpers/dom.js.
+import { installMiniDom, mountVNodes } from '../helpers/dom.js';
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
 const { ChoiceView, spTap, armedCard, cardPickable } = await import('../../public/js/ui/choiceOverlay.js');
-const { ChessDetail, ItemDetail, statTone, liveStat } = await import('../../public/js/ui/detailPanel.js');
+const { ChessDetail, ItemDetail, statTone, liveStat, CHESS_SECTIONS } = await import('../../public/js/ui/detailPanel.js');
 const { Button } = await import('../../public/js/ui/components.js');
 const { data } = await import('../../public/js/data.js');
 
@@ -212,7 +219,7 @@ describe('7: the detail card shows live stats against the base', () => {
       interval: 0.5, blockCnt: s.blockCnt,
       base: { maxHp: s.maxHp, atk: s.atk, def: s.def, res: s.res ?? 0, interval: 1, blockCnt: s.blockCnt },
     };
-    const blocks = ChessDetail({ chess: c, piece: null, editable: false, bonds: [], loadout: null, live });
+    const blocks = mountVNodes(preact, ChessDetail, { chess: c, piece: null, editable: false, bonds: [], loadout: null, live }, CHESS_SECTIONS);
     const stats = blocks.find((b) => b.key === 'stats');
     assert.ok(hasClass(stats, 'is-live'));
     assert.equal(stats.props['data-live'], 'battle');
@@ -227,11 +234,11 @@ describe('7: the detail card shows live stats against the base', () => {
     const hp = [...walk(head)].find((n) => hasClass(n, 'dhp'));
     assert.ok(textOf(hp).includes(`300 / ${live.maxHp.toLocaleString('en-US')}`), 'the live HP');
     // the prep preview: 开战时, no HP bar
-    const prep = ChessDetail({ chess: c, piece: null, editable: false, bonds: [], loadout: null, live: { ...live, src: 'prep' } });
+    const prep = mountVNodes(preact, ChessDetail, { chess: c, piece: null, editable: false, bonds: [], loadout: null, live: { ...live, src: 'prep' } }, CHESS_SECTIONS);
     assert.ok(textOf(prep.find((b) => b.key === 'stats')).includes('开战时'));
     assert.ok(![...walk(prep.find((b) => b.key === 'head'))].some((n) => hasClass(n, 'dhp')));
     // no live stats: the record's numbers, no tag
-    const plain = ChessDetail({ chess: c, piece: null, editable: false, bonds: [], loadout: null });
+    const plain = mountVNodes(preact, ChessDetail, { chess: c, piece: null, editable: false, bonds: [], loadout: null }, CHESS_SECTIONS);
     const pstats = plain.find((b) => b.key === 'stats');
     assert.ok(!hasClass(pstats, 'is-live'));
     assert.ok(!textOf(pstats).includes('实时') && !textOf(pstats).includes('开战时'));

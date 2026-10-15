@@ -36,7 +36,16 @@ globalThis.fetch = async (url) => {
 const { morphPairings, modeOffBonds, grantedBonds, harmonyMembers, HARMONY_BOND, bandOffBonds, bandOffLine } = await import('../../public/js/ui/gameLogic.js');
 const { data, getMode } = await import('../../public/js/data.js');
 await data.loadAll('bonds', 'chess', 'items', 'assets', 'garrisons', 'config');
-const { ItemDetail, ChessDetail, MorphPairings, MorphGrantLine, BondChips } = await import('../../public/js/ui/detailPanel.js');
+// Components that call useSkin at their top level (night batch of 2026-10-14) are MOUNTED; ChessDetail returns one
+// vnode per CHESS_SECTIONS entry, so the section list names its blocks. See helpers/dom.js.
+import { installMiniDom, mountVNodes } from '../helpers/dom.js';
+// The section names must skip what renders nothing for these records (no 模组 without a golden, no 行动 on a read-only
+// card): CHESS_SECTIONS.map(...).filter(Boolean) drops those, so a positional list would name every later block early.
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
+const { ItemDetail, ChessDetail, MorphPairings, MorphGrantLine, BondChips, CHESS_SECTIONS } = await import('../../public/js/ui/detailPanel.js');
 const { BondPopup, BondStrip } = await import('../../public/js/ui/bondStrip.js');
 const { popupView } = await import('../../public/js/ui/watchBonds.js');
 const { HARMONY_BOND: SERVER_HARMONY_BOND } = await import('../../server/match/bondsMeta.js');
@@ -176,7 +185,7 @@ describe('§21.26 1 — 变形同构体 on the cards', () => {
 
   test('a wearer\'s card (装备): the 变形同构体 row lists the pairings with the worn one highlighted (生效中); the bond item\'s row says it', () => {
     const piece = { uid: 1, kind: 'chess', id: WEARER, golden: false, tier: 1, items: [{ uid: 2, id: ISO }, { uid: 3, id: HAMMER }] };
-    const blocks = ChessDetail({ chess: chess[WEARER], piece, editable: false, bonds: [], offBonds: funny, loadout: null });
+    const blocks = mountVNodes(preact, ChessDetail, { chess: chess[WEARER], piece, editable: false, bonds: [], offBonds: funny, loadout: null }, { list: CHESS_SECTIONS, absent: ['module', 'actions'] });
     const equip = blocks.find((b) => b?.key === 'equip');
     const rows = byClass(equip, 'dmorph__row');
     assert.equal(rows.length, 14);
@@ -189,14 +198,14 @@ describe('§21.26 1 — 变形同构体 on the cards', () => {
     assert.ok(hasClass(grant[0], 'is-worn'));
     assert.match(textOf(grant[0]), /与变形同构体一同装备时，携带者视为【维多利亚】成员.*生效中/);
     // worn with a bond the mode switches off: 已搭配 + 本局禁用, never 生效中
-    const lat = ChessDetail({ chess: chess[WEARER], piece: { ...piece, items: [{ uid: 2, id: ISO }, { uid: 4, id: LATERANO_CLIP }] }, editable: false, bonds: [], offBonds: funny, loadout: null });
+    const lat = mountVNodes(preact, ChessDetail, { chess: chess[WEARER], piece: { ...piece, items: [{ uid: 2, id: ISO }, { uid: 4, id: LATERANO_CLIP }] }, editable: false, bonds: [], offBonds: funny, loadout: null }, { list: CHESS_SECTIONS, absent: ['module', 'actions'] });
     const latRow = byClass(lat.find((b) => b?.key === 'equip'), 'dmorph__row').find((r) => hasClass(r, 'is-worn'));
     assert.equal(latRow.props['data-bond'], 'lateranoShip');
     assert.match(textOf(latRow), /已搭配/);
     assert.match(textOf(latRow), /本局禁用/);
     assert.doesNotMatch(textOf(latRow), /生效中/);
     // a teammate's unit / a popup's 同构 row (no own piece): the same, from the item ids it carries
-    const ro = ChessDetail({ chess: chess[WEARER], piece: null, editable: false, bonds: [], offBonds: null, loadout: null, unitItems: [HAMMER_SHUDDER, ISO_B] });
+    const ro = mountVNodes(preact, ChessDetail, { chess: chess[WEARER], piece: null, editable: false, bonds: [], offBonds: null, loadout: null, unitItems: [HAMMER_SHUDDER, ISO_B] }, { list: CHESS_SECTIONS, absent: ['module', 'actions'] });
     assert.deepEqual(byClass(ro.find((b) => b?.key === 'equip'), 'dmorph__row').filter((r) => hasClass(r, 'is-worn')).map((r) => r.props['data-bond']), ['victoriaShip']);
   });
 

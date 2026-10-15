@@ -283,6 +283,61 @@
 // `public/css/screens/game-shop.css`、4 个语言包。
 
 // ============================================================================================
+// 三·六、UI 测试的真挂载（D042：皮肤那批引入的回归，及其修法）
+// ============================================================================================
+//
+// ## 问题
+// 皮肤那批（`7569f582~21..7569f582`）给 `shopBar.js` / `ownership.js` / `detailPanel.js` /
+// `gameComponents.js` / `screens/loadout.js` 的共享组件加了**组件顶层**的 `useSkin(...)`。而 `test/ui/` 下 16 个
+// 测试文件用的是「**直接调用组件函数 + 遍历返回的 vnode 断言 props**」（`ChessCard({...}).props.class`）。preact 的
+// hook 派发器需要一个只有真渲染才装上的「当前组件」，所以第一个无条件的 `useSkin` 就让这些测试全部变成
+// `TypeError: Cannot read properties of undefined (reading '__H')` —— 共 43 条失败。那批同时只改了 4 个测试文件
+// （assets / spectator-skin / runtime-http / skins），`test/ui/` 一个没动。
+//
+// ## 结论：改成真挂载，且用真 DOM（不是手写桩）
+// 新增 `test/helpers/dom.js`（约 340 行，被 16 个文件复用）：
+//   · `installMiniDom()` —— 装 DOM 全局量，**必须在 import 任何 app 模块之前**调用；
+//   · `mountVNode(preact, Type, props, overrides)` —— 同步挂载，返回**与旧的 vnode 同形**的对象，
+//     所以 `props.class` / `hasClass` / `textOf` / `srcsOf` 这些老断言基本不用改；`props.onClick()` 真的派发；
+//   · `mountVNodes(..., keys, overridesAt)` —— 给返回**多根**的组件（`ChessDetail` 每个 section 一个 vnode）；
+//   · `toVNode` / `vnodeOf` / `pendingHandles`。
+//
+// **为什么不用手写 DOM 桩**：先按原计划写了一个约 460 行的最小桩，实测能跑（preact + hooks 只需
+// createElement / createElementNS / createTextNode / setAttribute / insertBefore），但随后**每修一个测试就冒出
+// 一类缺失的标准行为**：`<script>` 的 text 语义、`disabled` 布尔属性、`documentElement.dataset`、
+// `<select>.value`、`style` 的字符串/对象两态、事件表键名……换成 `happy-dom`（**devDependency**，生产代码零改动）
+// 后代码更短、行为更真，整类问题一次消失。**生产代码一行未改**。
+//
+// ## 几个必须知道的坑（都实测过，不是推测）
+// 1. **preact 的事件表**存在元素上（发布构建里属性名是压过的 `l`，源码里叫 `__l`），键名是
+//    `<事件名><capture>` 且**大小写随 DOM 实现而变**（手写桩下是 `Clickfalse`，happy-dom 下是 `clickfalse`）。
+//    适配器按前缀不区分大小写匹配后重建 `onClick`。
+// 2. **vnode 的 `key` / `props` 不在 DOM 上**：`el.__k` 在 happy-dom 下**不存在**，`options.__r` 对每个 vnode 都触发
+//    （含内部 Fragment），包装根组件的 `type` 也拦不到（返回数组的组件，其 children 是在组件**内部**才创建的）。
+//    所以需要区块身份时**只能由调用方声明**。
+// 3. **`ChessDetail` 的区块会错位**：它是 `CHESS_SECTIONS.map(k => blocks[k]).filter(Boolean)`，
+//    返回 null 的区块被丢掉 → 之后**所有位置前移一位**。按位置命名就会出现「找 `skill` 拿到 skin 区块」这类
+//    静默错误（本项目实际踩到过，并因此改错过两处期望值）。现在用
+//    `{ list: CHESS_SECTIONS, absent: ['garrison', 'actions'] }` **显式声明**哪些区块不渲染；
+//    插入型区块（merge hint 在 index 1）用 `{ at: 1, key: 'merge', list }`。
+// 4. **DOM 回读的还原规则**（`toVNode` 里）：`data-*` 数值能往返就转回数字（`"007"` 保持字符串）；HTML
+//    **布尔属性**白名单里的 `""`/`"true"` → `true`、缺失 → 无；`style` 同时给字符串（`props.style`，老断言用）和
+//    活对象（`props.styleObject`）；表单元素补 `props.value`。**`aria-*` 是字符串属性，不参与还原。**
+// 5. 事件处理器收到的对象**只补缺、不覆盖**：老测试会传 `{ currentTarget: { value } }` 来驱动 `onChange`。
+//
+// ## 顺带修掉的真回归（非本批引入，但同批暴露）
+// · `sanitizeSettings` 的断言没跟上新增的 `skinsOn` / `skinsAutoEquip` 两个设置（`test/ui/gameLogic.test.js`）；
+// · `fallbackField.js` 被 `1055a235` 重构（提取 `si` / `diy` 局部量）后，`test/ui/standin-ui.test.js` 里的两条
+//   源码正则失效；**行为未变**，已按新写法重写；
+// · `test/docs-consistency.test.js` 的 `CHESS_SECTIONS` 守卫没跟上 `'skin'` 的插入（已修，见下）；
+// · `test/ui/playtest3.test.js` 里两处写死的区块顺序列表（同上，缺 `'skin'`）。
+//
+// ## 完成标准里那条「套件挂起」
+// 挂载会跑真实 effect，测试跑完进程仍不退出（看起来卡在几个百分点）。`after` 钩子实测**没有残留定时器句柄**，
+// 疑为未决 Promise。当前所有验证都用 `--test-force-exit` 规避（它只在测试结束后强制退出，不影响结果）。
+// **待办：查清这个未决 Promise 的出处**，理想情况下不必给 `npm test` 加这个参数。
+
+// ============================================================================================
 // 四、Todo（待搬运到 docs/development/README.md 的「待办与未确定事项」表）
 // ============================================================================================
 //

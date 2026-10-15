@@ -25,6 +25,13 @@ globalThis.fetch = async (url) => {
   }
 };
 
+// ChessCard calls useSkin at its top level (night batch of 2026-10-14), so it is MOUNTED; BondChips / BondPopup /
+// BondStrip call no hook and keep their direct calls. See helpers/dom.js.
+import { installMiniDom, mountVNode } from '../helpers/dom.js';
+installMiniDom();
+const preact = await import('../../public/vendor/preact.module.js');
+await import('../../public/vendor/hooks.module.js');
+
 const { modeOffBonds } = await import('../../public/js/ui/gameLogic.js');
 const { BondChips } = await import('../../public/js/ui/detailPanel.js');
 const { ChessCard } = await import('../../public/js/ui/shopBar.js');
@@ -87,7 +94,7 @@ test('a real 标准 match: 奥术 operators are buyable, three on the board neve
 test('shop / reward card: a mode-disabled bond tag is struck through with the 本局禁用 title; others unchanged', () => {
   const id = 'chess_char_1_17_a'; // 深靛: 奥术 / 精准
   const slot = { kind: 'chess', id, price: 1, basePrice: 1 };
-  const tags = (offBonds) => [...walk(ChessCard({ slot, idx: 0, priv: { funds: 9, hand: [], board: [], temp: [] }, onBuy() {}, onDetail() {}, offBonds }))].filter((v) => hasClass(v, 'scard__bond'));
+  const tags = (offBonds) => [...walk(mountVNode(preact, ChessCard, { slot, idx: 0, priv: { funds: 9, hand: [], board: [], temp: [] }, onBuy() {}, onDetail() {}, offBonds }))].filter((v) => hasClass(v, 'scard__bond'));
   const on = tags(modeOffBonds(getMode('mode_single_funny')));
   assert.equal(on.length, 2);
   assert.ok(hasClass(on[0], 'is-off'), '奥术 struck');
