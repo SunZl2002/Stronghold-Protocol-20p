@@ -74,7 +74,7 @@ export function installMiniDom() {
 export const installMiniDomAsync = async () => installMiniDom();
 
 /** The happy-dom window, once installed. */
-export const miniDomWindow = () => windowRef;
+export const domWindow = () => windowRef;
 
 // ---------------------------------------------------------------------------------------------------------------
 // mounting

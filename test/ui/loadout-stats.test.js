@@ -171,7 +171,7 @@ test('the section draws the detail card\'s own stats block: same eight values an
   ];
   for (const [id, level, entries] of cases) {
     const pv = preview(id, level, entries);
-    // ChessDetail returns one vnode per CHESS_SECTIONS entry and calls useSkin, so it has to be MOUNTED (miniDom);
+    // ChessDetail returns one vnode per CHESS_SECTIONS entry and calls useSkin, so it has to be MOUNTED (helpers/dom.js);
     // the section list names the blocks, since preact keeps keys off the DOM node.
     const card = mountVNodes(preact, ChessDetail, { chess: pv.chess, piece: null, editable: false, bonds: [], loadout: entries }, CHESS_SECTIONS)
       .find((b) => b.key === 'stats');
