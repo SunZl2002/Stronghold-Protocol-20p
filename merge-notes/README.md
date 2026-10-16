@@ -8,8 +8,8 @@
 上游:  sganggs/Stronghold-Protocol  master = c24e17ee  (v0.3.0, 390 个新提交)
 我们:  本分支 capacity-20p            领先 147 / 落后 390
 冲突:  48 个文件 / 97 个冲突块
-已解:  44 个      ← 本目录的脚本可重放（含 choices.js / assetCache.js / units.js / test/client-static）
-剩余:  10 个      ← 见下「剩余清单」
+已解:  46 个      ← 13 个脚本可确定重放（见 REPLAY.md）
+剩余:   2 个      ← 4 个大文件 + test/package + player/* 需要人；见「剩余清单」
 ```
 
 **分支本身没有被改动**：合并被中止，`HEAD` 是 `09704bbd`，tag `v0.2.6-skin` 在位。
@@ -79,7 +79,7 @@ node merge-notes/show-conflicts.mjs . server/lobby.js server/index.js
 `package.json` 与 `APP_VERSION` **自动变成 0.3.0**。**I011（版本策略）要重新决定**：要不要 `0.3.0-20p`，
 以及刚推的 `v0.2.6-skin` 怎么处理。
 
-## 剩余 10 个（按建议顺序）
+## 剩余（按建议顺序）
 
 **第一批 · 非对局逻辑**
 
