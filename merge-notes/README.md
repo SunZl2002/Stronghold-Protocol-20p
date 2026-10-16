@@ -8,8 +8,8 @@
 上游:  sganggs/Stronghold-Protocol  master = c24e17ee  (v0.3.0, 390 个新提交)
 我们:  本分支 capacity-20p            领先 147 / 落后 390
 冲突:  48 个文件 / 97 个冲突块
-已解:  43 个      ← 本目录的脚本可重放（含 choices.js / assetCache.js / units.js）
-剩余:  11 个      ← 见下「剩余清单」
+已解:  44 个      ← 本目录的脚本可重放（含 choices.js / assetCache.js / units.js / test/client-static）
+剩余:  10 个      ← 见下「剩余清单」
 ```
 
 **分支本身没有被改动**：合并被中止，`HEAD` 是 `09704bbd`，tag `v0.2.6-skin` 在位。
@@ -29,7 +29,7 @@
 
 **真正需要判断的只有 `server/match/player/*` 那 3 个**（20 人容量经济 vs 上游 #624 修复）。
 
-## 复现到「已解 36 个」
+## 复现到「已解 44 个」
 
 ```bash
 cd <repo>
@@ -79,7 +79,7 @@ node merge-notes/show-conflicts.mjs . server/lobby.js server/index.js
 `package.json` 与 `APP_VERSION` **自动变成 0.3.0**。**I011（版本策略）要重新决定**：要不要 `0.3.0-20p`，
 以及刚推的 `v0.2.6-skin` 怎么处理。
 
-## 剩余 14 个（按建议顺序）
+## 剩余 10 个（按建议顺序）
 
 **第一批 · 非对局逻辑**
 
@@ -129,6 +129,22 @@ node merge-notes/show-conflicts.mjs . server/lobby.js server/index.js
 **3. `choices.js` 同类问题** —— `rollItemId` 那个块的**上游侧包含 `for` 的收尾**
 （`}` + `handled = true;`），所以替换文本**不能**再带那两行，否则留下孤儿的 `if`/`}`。
 （这个文件第一次重放就是这么坏的。）
+
+## `test/client-static.test.js` 已解 —— 0.3.0 的 CSP 改动
+
+上游把引导从内联改成外置（`bootLegacy.js` + `boot.js` 里 catch 错误），并断言 **`devices.css` 是最后一个样式表**。
+**本分支做不到那条断言**：自己的功能表（announcements / asset-cache / **match-chat**）围绕它链接 ——
+实测 `devices.css` 在第 18 位、`match-chat.css` 在它之后。
+
+→ 合并后的断言：**`devices.css` 之后只能是本分支的功能表**；**同时**保留上游的引导断言
+（外置 `bootLegacy.js`、无内联 `onerror`）。**两边都留。**
+
+上游把引导从内联改成外置（ootLegacy.js + oot.js 里 catch 错误），并断言 **devices.css 是最后一个样式表**。
+**本分支做不到那条断言**：自己的功能表（announcements / asset-cache / **match-chat**）围绕它链接，
+实测 devices.css 在第 18 位、match-chat.css 在它之后。
+
+→ 合并后的断言：**devices.css 之后只能是本分支的功能表**；**同时**保留上游的引导断言
+（外置 ootLegacy.js、无内联 onerror）。两边都留。
 
 ## 合并后必做的验证
 
