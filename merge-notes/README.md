@@ -8,11 +8,11 @@
 上游:  sganggs/Stronghold-Protocol  master = c24e17ee  (v0.3.0, 390 个新提交)
 我们:  本分支 capacity-20p            领先 147 / 落后 390
 冲突:  48 个文件 / 97 个冲突块
-已解:  36 个      ← 本目录的脚本能重放到这一步
-剩余:  14 个      ← 见下「剩余清单」
+已解:  43 个      ← 本目录的脚本可重放（含 choices.js / assetCache.js / units.js）
+剩余:  11 个      ← 见下「剩余清单」
 ```
 
-**分支本身没有被改动**：合并被中止，`HEAD` 仍是 `27dae22b`，tag `v0.2.6-skin` 在位。
+**分支本身没有被改动**：合并被中止，`HEAD` 是 `09704bbd`，tag `v0.2.6-skin` 在位。
 
 ## 一条重要结论（省下大量重复分析）
 
@@ -109,6 +109,26 @@ node merge-notes/show-conflicts.mjs . server/lobby.js server/index.js
 | `server/match/player/acquire.js` | 2 | 20 人经济（`isUnlimitedGiftItem` + `noPool`）vs 上游 #624 修复 —— **两边都要留，要手工移植** |
 | `server/match/player/economy.js` | 1 | 同类 |
 | `server/match/player/prep.js` | 1 | 同类（上游 #624：「已展示的装备奖励不因库存耗尽消失」）|
+
+## ⚠️ 三条「别用直觉」的教训（都实际踩过）
+
+**1. 冲突块可能「越过」它所属的方法** —— `public/js/render/units.js` 的 `_pictureUrl` 块，
+**上游侧包含 `_loadPicture` 的函数头、`url`、`old` 和它自己的 `_pic` 记录**。因此：
+
+- **整块替换** → 删掉下一个方法的头 →孤儿代码 → `SyntaxError: Unexpected token '!'`
+- **两边都留** → `skinOpt` / `entry` 重复声明 → `Identifier already declared`
+
+→ **按内容定位那段区域并重建**（`resolve-units2.mjs` 会先校验标记位置，不符就抛错）。
+**皮肤要穿四处**：`_modelEntry` 的 `spineEntry` 选项、`_pictureUrl` 的三个 `a.picture`、
+`_loadPicture` 与 `_clearPicture` 两处 `_pic.key`（**两处 key 必须一致**，否则比较会认为是不同的图）。
+
+**2. 不要依赖行号** —— 我按行号写的 `resolve-units2.mjs` 在**别的解析器先跑之后失效**
+（行号移位），而 `Out-Null` 把它的 `throw` 吞了，看起来像"没生效"。
+**现在的版本全部按内容定位。**
+
+**3. `choices.js` 同类问题** —— `rollItemId` 那个块的**上游侧包含 `for` 的收尾**
+（`}` + `handled = true;`），所以替换文本**不能**再带那两行，否则留下孤儿的 `if`/`}`。
+（这个文件第一次重放就是这么坏的。）
 
 ## 合并后必做的验证
 
