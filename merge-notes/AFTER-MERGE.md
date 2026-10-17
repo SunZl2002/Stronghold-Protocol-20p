@@ -29,16 +29,39 @@
 
 0.3.0 新增的约定（有测试）。我们的 `phases.js` / `spDraft.js` / `unite.js` 各有一处。
 
-### 剩余：`test/plugins` 9 个
+### 剩余：`test/plugins` 8 个
 
 ```
-GET /p/ 的缓存头：actual 'no-cache'，expected 'public, max-age=31536000, immutable'
 GET /p/: 扫描后放进去的符号链接不应被跟随
 a plugins folder spelled in another case than on disk still serves its files
 a plugin message agrees with the schema（actual false, expected true）
 named operator / band / hammer / 黑云 / warden loops stop at the official cap（还要补 loop-cap）
-整文件挂起：contentBattle / csp / dsl-data / script-integration（都只报 'test failed'）
+整文件挂起：contentBattle / csp / dsl-data / script-integration
 ```
+
+#### ✅ 已修：`?v=` 的缓存规则（`identity.test.js` 15 → 16 全绿）
+
+`files.js` 的 `cacheControlFor` 两边不同：
+
+```
+上游  if (/(^|&)v=/.test(query)) return IMMUTABLE_CACHE;                       ← 任何挂载点
+我们  if (mountName === 'public' && ['assets','fonts'].includes(...))          ← 只限 public/assets|fonts
+```
+
+内容集清单发布的 URL 就是 `/data/<file>.json?v=<sha8>`，**`v` 装的是内容哈希**，URL 随字节变 → 缓存一年安全。
+我们那行是 D022 之前的遗留。已采纳上游的规则（注释里写明理由）。
+
+#### ⚠️ 整文件挂起的 4 个：`0xC0000409`（Windows fail-fast）
+
+`node test/plugins/csp.test.js` → 前两个测试通过后进程**被杀**，退出码 `-1073740791` = `0xC0000409`。
+**逐个单跑时测试 3、4 是通过的**，所以这是**累积性**崩溃：同一进程里建了**第二个** `createStaticHandler`
+（每次测试都建）之后才炸。
+
+**已排除**：同样的请求序列在独立探针里**完全正常**（`/`、`/js/battle/simWorker.js`、range 206、etag 304，exit 0）。
+
+**下一步怀疑**：`RuntimeCache` 的 watcher / `CompressCache` 这类**原生资源**在反复构造 handler 时不释放，
+或者 `zlib` 在 mock `Writable` 上的第二次压缩。**先在这三处加 `close()`/`dispose()`，或在测试间复用 handler。**
+另外 `csp.test.js` 的第 5 个测试（UI frame policy）**单独跑也是失败的**，要单独看。
 
 **已检查**：`IMMUTABLE_CACHE` / `isNotModified` **其实接了线**（`static.js:217` / `static.js:256`）。
 `/p/` 的判定是 `cacheControl: same && f.urlHashes.has(hash) ? IMMUTABLE_CACHE : 'no-cache'`（与上游一致），
