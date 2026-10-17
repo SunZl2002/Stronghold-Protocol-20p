@@ -63,6 +63,7 @@ export class MatchSpDraft {
       const ps = this.players.get(g.order[g.idx]);
       if (ps && ps.alive && !ps.left && s.picks[ps.playerId] == null) break;
       g.idx++;
+    }
     this.cancel(this._turnTimer);
     this._turnTimer = null;
     while (s.idx < s.order.length) { // loop-cap: draft order
@@ -228,13 +229,13 @@ export class MatchSpDraft {
     return b.id;
   }
 
-  /** Random item id: a choices.json server pool ({ pool }), a tier, or ≤ maxTier shop-eligible items. */
-  rollItemId({ pool = null, tier = null, maxTier = 6, shopLevel = 6, player = null } = {}) {
-  /** Random item id: a choices.json server pool ({ pool }), a tier, or ≤ maxTier shop-eligible items.
+  /**
+   * Random item id: a choices.json server pool ({ pool }), a tier, or ≤ maxTier shop-eligible items.
    * `also` (pool_equip_kathe: 突变细胞) joins the draw even though it is shopExcluded. The shop item slot does not
    * read it. `pick` still drops ids that `canGain` refuses, so an empty shop item stays out and an uncapped `also`
-   * id can still be drawn. */
-  rollItemId({ pool = null, tier = null, maxTier = 6, shopLevel = 6 } = {}) {
+   * id can still be drawn. `player` selects the 20-player GROUP pool (this fork); the stock read below uses it.
+   */
+  rollItemId({ pool = null, tier = null, maxTier = 6, shopLevel = 6, player = null } = {}) {
     const pools = this.gd.choices.pools && typeof this.gd.choices.pools === 'object' ? this.gd.choices.pools : {};
     const p = typeof pool === 'string' && Object.hasOwn(pools, pool) ? pools[pool] : null;
     const rng = this.rngMeta;

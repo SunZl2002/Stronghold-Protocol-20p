@@ -36,7 +36,6 @@ export const TEXT_SIZES = Object.freeze(['sm', 'md', 'lg', 'xl']);
  *   - `skinsAutoEquip` is D037's one-click dress: on (the default) a browser that has never chosen seeds one skin per
  *     operator. Turning it off stops seeding AND stops an already-seeded set from being worn, so a player can look at
  *     plain operators while other players' skins still show (that needs `skinsOn`).
- */
  *  voiceNative: the 本土语言 switch (default off). textSize: TEXT_SIZES (css/theme.css `--t`, applied by ui/settings.js
  *  applyTextSize). ammoCount: 设置「弹药数量」 — the rounds left / the magazine under an ammo skill's bar (render/units.js;
  *  PR #552), off by default: the official HUD has no such number (the maintainer's decision of 2026-10-13).

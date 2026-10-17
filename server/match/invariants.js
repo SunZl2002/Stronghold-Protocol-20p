@@ -214,21 +214,18 @@ export function collectViolations(m, { limit = 25 } = {}) {
   for (const group of m.poolGroups) {
     const stock = group.itemPool;
     if (!stock || !gd.raw.items) continue;
-  // Displayed shop cards and item rewards may overdraw; itemPool.debt is that overage (#624). Fixed gift families
+  // Displayed shop cards and item rewards may overdraw; the pool's debt is that overage (#624). Fixed gift families
   // may overdraw without a debt entry. debt > over is always a missed repay or a debt recorded for a piece not kept.
   // The chess pool above also permits explicit overdraw (Mimic, displayed operator cards).
-  if (m.itemPool && gd.raw.items) {
     for (const [id, rec] of Object.entries(gd.raw.items)) {
       if (!rec || rec.isGolden) continue;
       const cap = stock.cap(id);
       if (!Number.isInteger(cap)) continue;
       const h = stock.held(id);
-      if (h > cap && !gd.isUnlimitedGiftItem(id)) fail(`item group ${group.id}/${id}: held ${h} > cap ${cap}`);
-      const h = m.itemPool.held(id);
       const over = Math.max(0, h - cap);
-      const debt = m.itemPool.debtOf(id);
-      if (debt > over) fail(`item ${id}: debt ${debt} > overage ${over} (held ${h}, cap ${cap})`);
-      if (!gd.isUnlimitedGiftItem(id) && over > debt) fail(`item ${id}: held ${h} > cap ${cap} without debt ${debt}`);
+      const debt = stock.debtOf(id);
+      if (debt > over) fail(`item group ${group.id}/${id}: debt ${debt} > overage ${over} (held ${h}, cap ${cap})`);
+      if (!gd.isUnlimitedGiftItem(id) && over > debt) fail(`item group ${group.id}/${id}: held ${h} > cap ${cap} without debt ${debt}`);
     }
   }
 

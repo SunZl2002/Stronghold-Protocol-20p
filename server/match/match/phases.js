@@ -171,6 +171,7 @@ export class MatchPhases {
           if (this.draft === d && this.phase === PHASE.BAND_DRAFT && d.groups.every((x) => x.done)) this.finishBandDraft(false);
         });
       }
+    }
     this.cancel(this._turnTimer);
     this._turnTimer = null;
     while (d.idx < d.order.length && d.picks[d.order[d.idx]]) d.idx++; // loop-cap: draft order

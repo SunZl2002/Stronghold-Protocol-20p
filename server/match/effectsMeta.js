@@ -636,10 +636,9 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
       const extra = typeof ps.diyStockEntries === 'function' ? ps.diyStockEntries() : null;
       return ps.pool.roll(m.rngMeta, { maxTier: Number.isInteger(opts.maxTier) ? opts.maxTier : 6, tier: Number.isInteger(opts.tier) ? opts.tier : null, filter: f, extra, ignoreCounts: opts.ignoreCounts === true });
     },
+    // this fork: the item roll goes through the match's rollItemId with `player`, so the 20-player grouped pool is
+    // consulted (upstream's variant was a bare pool roll without the player)
     rollItem: (opts = {}) => m.rollItemId({ ...opts, player: ps }),
-      return m.pool.roll(rng, { maxTier: Number.isInteger(opts.maxTier) ? opts.maxTier : 6, tier: Number.isInteger(opts.tier) ? opts.tier : null, filter: f, extra, ignoreCounts: opts.ignoreCounts === true });
-    },
-    rollItem: (opts = {}) => rolls.rollItemId(opts),
     /**
      * Roll a choices.json pool: equip pools → { kind: 'item', id }; chess pools (items / weighted / shopEligible with
      * tier, minTier, bond, golden) → { kind: 'chess', id, golden } (a pool chess needs a free copy). null when empty.

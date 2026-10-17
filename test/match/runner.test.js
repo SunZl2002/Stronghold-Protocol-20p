@@ -30,8 +30,10 @@ function fakeNet() {
   return n;
 }
 
-function rig({ hidden = false, loadSim = async () => ({ spec: specMod, ds: DS }) } = {}) {
-function rig({ hidden = false, combatMetrics = true, pinMetrics = true, createHost = null } = {}) {
+// Two rigs merged into one: this fork pinned combat metrics on, 0.3.0 added the injected sim host (`createHost`) and
+// the `loadSim` default. Both option sets stay; a caller passes whichever it needs.
+function rig({ hidden = false, combatMetrics = true, pinMetrics = true, createHost = null,
+  loadSim = async () => ({ spec: specMod, ds: DS }) } = {}) {
   let t = 1000;
   const frames = [];
   const intervals = [];
