@@ -300,7 +300,10 @@ function ifRangeMatches(req, etag, lastModified) {
 
 function cacheControlFor(ext, mountName, segments, query) {
   if (ext === '.html' || ext === '.htm') return 'no-cache';
-  if (mountName === 'public' && ['assets', 'fonts'].includes(segments[0]) && /(^|&)v=/.test(query)) return IMMUTABLE_CACHE;
+  // A `?v=` names the bytes (the content hash), so the URL changes when they do — immutable for a year on EVERY mount,
+  // not just public/assets|fonts. Upstream 0.3.0 broadened this and the content-set manifest relies on it:
+  // /data/<file>.json?v=<sha8> is the URL it publishes, and D022's runtime pins (`?rv=`) ride the same rule.
+  if (/(^|&)v=/.test(query)) return IMMUTABLE_CACHE;
   if (mountName === 'public' && segments.length > 1 && LONG_CACHE_DIRS.includes(segments[0])) return LONG_CACHE;
   return 'no-cache';
 }
