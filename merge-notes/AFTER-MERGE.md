@@ -30,9 +30,16 @@
   要么给 `VirtualScheduler` 补 `runUntil`，要么这个测试本来就没跑过。
 
 ### ⚠️ 合并相关，值得查（按优先级）
-1. **`plugin-host`：「the room keeps its content set」** —— 房间的 content set（`cs`）在 match host 里丢了。
-   最可能在 `lobby.js` 的 `room.content` / `holdContent` / `resolveContent`（我合并过这一块），或
-   `createSessionStack(opts, { data, log, content, plugins: roomSets, hosts })` 的接线。
+
+> **已拿到具体值**：`plugin-host` 的失败是 `back.content.cs` 与 `st.content.cs` **不相等**（不是 null）：
+> `actual 1a71d6ad…efa5` vs `expected 205305c6…6e2f` —— 房间从崩溃的 match host 回到大厅时 **content set 变了**。
+> **已排除**：`resolveContent` 的 4 个调用点、`room.content` 的 3 个赋值点（811 / 817 / 479）都与上游**完全一致**。
+> **下一个该看**：回到大厅那条路径上谁重算了 content —— 可能是 `room.state` 里 content 字段的来源，
+> 或 host 崩溃后 `room.match = null` 时触发的一次 re-resolve。
+> 另外这一个用例是**子进程**跑的，而同一文件里「a whole AI-seat match in a match host」**7.8 s 通过** ——
+> 所以子进程环境没问题，这是真断言失败。
+
+1. **`plugin-host`：「the room keeps its content set」** —— 见上。
 2. **`lobby-integration`：「co-op spectator removed by the host while the match runs」** ——
    合并前 5/5 过，合并后失败，说明 `room.removeSpectator` / seat 释放的语义被改了。
 3. **`connection`：「public throttling starts at broadcast time…」** —— 计时/节流语义。
