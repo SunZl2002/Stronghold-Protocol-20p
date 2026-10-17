@@ -1,74 +1,72 @@
-# 合并后：剩余问题与已定决策（2026-10-17 晚）
+# 合并后：剩余问题（2026-10-17 深夜）
 
 ## 已通过
 
 ```
-48 / 48 冲突已解          0 个冲突标记
-95 个改动的 JS 文件        node --check 全过
-D036 红线                 test/wire-pressure.test.js 通过
-finalAssault.test.js      15 / 15
-group-drafts.test.js      27 / 27
-闸门 3（版本一致性）        通过
+48 / 48 冲突已解            0 个冲突标记
+95 个改动的 JS 文件          node --check 全过
+D036 红线                   test/wire-pressure.test.js ✅
+闸门 2  20 人容量与分组库存    ✅ 通过
+闸门 3  版本一致性 / 发布接线   ✅ 通过
+finalAssault 15/15 · group-drafts 27/27 · pool 12/12 · player-capacity 30/30 · group-stock 7/7
 ```
 
-## ✅ 已定决策（用户，2026-10-17）
-
-**库存耗尽时的商店行为：采纳上游 #624。**
-
-> 已经在界面上展示的装备，库存耗尽也照样能买；差额记成 `acquireItem` 的「欠账」（`itemPool.debt`）。
-> **不**保留我们分支的 `SOLD_OUT` 拒绝。
-
-### 代码侧：已经是对的
-
-- `server/match/player/acquire.js` — `displayed` 参数 + `debt` 记账已在（我们只在它旁边加了自己的
-  `noPool` 固定礼物标记，池用 `itemPoolFor(this)` 分组读取）。
-- `server/match/player/economy.js` / `prep.js` — 我们那两个 `canGain` 库存门已删除，正是 #624 的行为。
-- `server/match/pool.js` — `SharedItemPool` 同时有我们的 `scale` 和上游的 `debt/owe/repay`。
-
-### 测试侧：要改 `test/match/group-stock.test.js`（**唯一还没做的**）
-
-用例 `exhausting one equipment group gates only its shop, reward, golden upgrade and effect rolls`
-（第 62 行起）有 4 处还是旧语义：
-
-| 行 | 现在断言 | 应改成 |
-|---|---|---|
-| 76 | `a.buy(0).error === 'SOLD_OUT'` | **购买成功**（`ok`），`funds` 20 → 19，`m.itemPoolFor(a).debtOf(PACK) === 1` |
-| 77 | `a.funds === 20` | `19` |
-| 78 | `a.pickReward(0).error === 'SOLD_OUT'` | **领取成功**（reward offer 也是「已展示」，prep.js 已按 #624 放行），`offers.length` 随之减少 |
-| 79 | `a.offers.length === 1` | 按上一条调整 |
-
-**必须保留的组隔离断言**（本分支的核心，不要动）：
+## 闸门 1（金标准）：**只剩 2 个场景**
 
 ```
-m.itemPoolFor(b).left(PACK) === 2       ← 另一组不受影响
-a.upgradeItem(x) === false              ← 金色升级仍被库存门拦住
-a._rollItemSlot() === null              ← 抽卡仍排除空库存
-b._rollItemSlot().id === PACK
-ca.rollItem({tier:5}) === null          ← 效果 roll 同样
-cb.rollItem({tier:5}) === PACK
-ca.rollPool('test_group_item') === null
-cb.rollPool('test_group_item') → { kind:'item', id:PACK }
-checkInvariants(m)                      ← debt ≤ overage 的不变量必须成立
+coop2-NORMAL-3         ← 我们自己多出来的偏离（上游没有重算它）
+coop2-NORMAL-70-diy    ← 与上游自己的重算清单一致（#650 自选库存翻倍）
 ```
 
-### 其他因此受影响的失败（同源，改完再看）
+上游 0.3.0 的提交 25705cdf 说的是：**只有 `coop2-NORMAL-70-diy` 和 `coop2-NORMAL-5-coverage-diy` 需要重算**
+（「every other scenario matches」）。
+
+所以 `coop2-NORMAL-70-diy` 的差异**是预期的**（#650 改了我们私有自选库存的容量，我们已经采纳）。
+**但 `coop2-NORMAL-3` 是我们独有的偏离**，需要查清楚：要么是解冲突时改变了 vanilla（1-4 人）行为，
+要么是我们分支本来的差异在上游重算金标准后暴露了出来。
+
+### `coop2-NORMAL-3` 的差异细节（实测）
 
 ```
-nine players: a five-player group does not expand private DIY stock
-twenty client-combat participants finish a complete match with grouped pools and no engine errors
-twenty players: buying, merging, selling and eliminating DIY / stand-in pieces …
-effect-only items are never shop items: not in shopItemsByTier, never in the item slot, the pools or the 机变 supply
+.end.teamLp         50 → 71
+.end.virtualMs      116900 → 119900
+.rng.shop           486 → 463
+.rng.bots           21596 → 21897
+.rng.meta           2 → 22
+.rounds[0].ai_1.deployed   3 → 4
+.rounds[0].ai_1.board      c5e8ecc5 → 27a9316b
 ```
 
-## 闸门 1（金标准，10 个场景 digest 不同）
+`rng.meta` 差 **20** 次是很强的线索：某个路径多抽了 20 次 meta RNG。可疑处按优先级：
 
-**很可能是上游 0.3.0 自己的数值改动**，但必须逐场景确认后在
-`docs/development/records/` 里写明原因。`npm run golden:update` 是最后手段，不是第一步。
+1. **`rollItemId` 的 `withAlso`**（本轮刚修）—— `also` 列表现在真的进入候选，`pick` 每次仍只抽一次，
+   但**能抽到以前抽不到的 id** 会改变后续分支（例如获得装备 → 触发效果 → 再抽）。这很可能就是它。
+2. `acquireItem` 的 `displayed` 路径（#624）—— 多出来的获得会改变后续 RNG。
+3. `poolCopies` 的 co-op 倍率（#650）—— 影响候选池大小，进而影响 `pick` 的结果。
 
-## 下一步顺序
+### 判断方法（下一轮）
 
-1. 按上表改 `group-stock.test.js`（**只改那 4 行，保留组隔离断言**）。
-2. 重跑 `node tools/verify-20p.mjs`，看闸门 2 是否清掉。
-3. 逐个核对 10 个金标准场景。
-4. 全量 `node --test`、浏览器实测、皮肤测试。
-5. 全绿后删掉 `merge-notes/` 与 `.cache/`。
+```bash
+# 1. 只在我们的 HEAD 上替换一个变量再跑，看差异是否消失
+# 2. 或者：把 test/golden/matches.json 里 coop2-NORMAL-3 的 digest 用 `node tools/golden.mjs --scenario coop2-NORMAL-3`
+#    重新算出来，逐字段对照上面的差异
+```
+
+**注意**：`npm run golden:update` 是**最后手段**。先用它之前必须能解释每一个字段的差异，
+否则等于把真 bug 固化成基线。
+
+## 之前几轮修掉的（备忘，都在 git 历史里）
+
+1. `settle.js` —— `creditedKillsOf(up)` 在循环外引用循环变量 → 每次结算抛 ReferenceError → 对局第 1 轮就死。
+2. `phases.js` —— `startDraftTurn` 留着上游单组的全局收尾 → 第一组打完整个草稿就结束（10 人桌 `d.order` 只有 4 条）。
+3. `spDraft.js` —— `rollItemId` 我们的早返回在前、上游 `also` 实现在后成了死代码 → 突变细胞永远抽不到。
+4. `items.js` —— `releaseItemStock` 用 `Match.itemPool`（第一组）还款 → 还错池子 → `debt > overage` 不变量崩。
+5. 7 个「都留」拼坏的文件（语法级）。
+6. `index.js` / `routes.js` 的运行期缺失（`startedAt` / `assetCache` / 残留 `track(res)`）。
+
+## 全绿之后
+
+- 全量 `node --test`
+- 浏览器实测（皮肤、弹幕、官方特效、插件）
+- `node tools/verify-20p.mjs --full`
+- 删掉 `merge-notes/` 与 `.cache/`
