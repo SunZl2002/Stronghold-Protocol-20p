@@ -59,7 +59,7 @@ export class MatchSpDraft {
     if (this.phase !== PHASE.SP_DRAFT || !s || !group) return;
     const g = group;
     this.clearDraftGroupTimer(g);
-    while (g.idx < g.order.length) {
+    while (g.idx < g.order.length) { // loop-cap: the group's seat order
       const ps = this.players.get(g.order[g.idx]);
       if (ps && ps.alive && !ps.left && s.picks[ps.playerId] == null) break;
       g.idx++;
