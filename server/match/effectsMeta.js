@@ -633,12 +633,16 @@ export function makeCtx(m, ps, source, hook, ev = null, preview = null) {
         if (opts.bond) { const c = gd.chess(id); if (!c || !Array.isArray(c.bonds) || !c.bonds.includes(opts.bond)) return false; }
         return typeof opts.filter === 'function' ? !!opts.filter(id) : true;
       };
+      // `rolls`, not `m`: under a rehearsal preview `rolls` shadows the live match with the isolated RNG (see the top of
+      // makeCtx), and a pool roll must advance THAT stream. Reading m.rngMeta here consumed the real match RNG, so every
+      // rehearsal candidate started at a different position (bot.test.js: "every candidate starts at the same RNG
+      // position, including the pool roll helpers").
       const extra = typeof ps.diyStockEntries === 'function' ? ps.diyStockEntries() : null;
-      return ps.pool.roll(m.rngMeta, { maxTier: Number.isInteger(opts.maxTier) ? opts.maxTier : 6, tier: Number.isInteger(opts.tier) ? opts.tier : null, filter: f, extra, ignoreCounts: opts.ignoreCounts === true });
+      return ps.pool.roll(rolls.rngMeta, { maxTier: Number.isInteger(opts.maxTier) ? opts.maxTier : 6, tier: Number.isInteger(opts.tier) ? opts.tier : null, filter: f, extra, ignoreCounts: opts.ignoreCounts === true });
     },
     // this fork: the item roll goes through the match's rollItemId with `player`, so the 20-player grouped pool is
-    // consulted (upstream's variant was a bare pool roll without the player)
-    rollItem: (opts = {}) => m.rollItemId({ ...opts, player: ps }),
+    // consulted (upstream's variant was a bare pool roll without the player). Same `rolls` receiver as rollChess.
+    rollItem: (opts = {}) => rolls.rollItemId({ ...opts, player: ps }),
     /**
      * Roll a choices.json pool: equip pools → { kind: 'item', id }; chess pools (items / weighted / shopEligible with
      * tier, minTier, bond, golden) → { kind: 'chess', id, golden } (a pool chess needs a free copy). null when empty.
