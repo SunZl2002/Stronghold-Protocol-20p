@@ -1,47 +1,74 @@
-﻿# 合并后：已修到哪、还剩什么（2026-10-17 晚）
+# 合并后：剩余问题与已定决策（2026-10-17 晚）
 
 ## 已通过
 
-- **48 / 48 冲突全部解决**，0 个冲突标记；合并已提交。
-- **全部 95 个被改动的 JS 文件 `node --check` 通过**。
-- **D036 红线通过**：`node --test test/wire-pressure.test.js` →
-  84 个 compact socket / 四个房间 / 0.8 Mbps 应用层预算 + 四个冷 br 下载，全部 OK。
-- `data/assets.json` 保留我们的（中日，0 个文件缺失）。
+```
+48 / 48 冲突已解          0 个冲突标记
+95 个改动的 JS 文件        node --check 全过
+D036 红线                 test/wire-pressure.test.js 通过
+finalAssault.test.js      15 / 15
+group-drafts.test.js      27 / 27
+闸门 3（版本一致性）        通过
+```
 
-## 还失败
+## ✅ 已定决策（用户，2026-10-17）
 
-`node tools/verify-20p.mjs`：
+**库存耗尽时的商店行为：采纳上游 #624。**
 
-| 闸门 | 结果 | 说明 |
+> 已经在界面上展示的装备，库存耗尽也照样能买；差额记成 `acquireItem` 的「欠账」（`itemPool.debt`）。
+> **不**保留我们分支的 `SOLD_OUT` 拒绝。
+
+### 代码侧：已经是对的
+
+- `server/match/player/acquire.js` — `displayed` 参数 + `debt` 记账已在（我们只在它旁边加了自己的
+  `noPool` 固定礼物标记，池用 `itemPoolFor(this)` 分组读取）。
+- `server/match/player/economy.js` / `prep.js` — 我们那两个 `canGain` 库存门已删除，正是 #624 的行为。
+- `server/match/pool.js` — `SharedItemPool` 同时有我们的 `scale` 和上游的 `debt/owe/repay`。
+
+### 测试侧：要改 `test/match/group-stock.test.js`（**唯一还没做的**）
+
+用例 `exhausting one equipment group gates only its shop, reward, golden upgrade and effect rolls`
+（第 62 行起）有 4 处还是旧语义：
+
+| 行 | 现在断言 | 应改成 |
 |---|---|---|
-| 1 金标准 | 失败 | **10 个场景**的 digest 与存档不同 |
-| 2 20 人容量 | 失败 | 三个用例：`boss preview / Hidden Core 单次抽取`、`八人领队战中途离开时共享池只缩不放 HP%`、`Final Assault 单人：merged team LP` |
-| 3 版本一致 | 通过 | |
+| 76 | `a.buy(0).error === 'SOLD_OUT'` | **购买成功**（`ok`），`funds` 20 → 19，`m.itemPoolFor(a).debtOf(PACK) === 1` |
+| 77 | `a.funds === 20` | `19` |
+| 78 | `a.pickReward(0).error === 'SOLD_OUT'` | **领取成功**（reward offer 也是「已展示」，prep.js 已按 #624 放行），`offers.length` 随之减少 |
+| 79 | `a.offers.length === 1` | 按上一条调整 |
 
-### 判断线索（还没查完）
+**必须保留的组隔离断言**（本分支的核心，不要动）：
 
-- 闸门 1 的 10 个场景差异**很可能是上游 0.3.0 自己的数值改动** —— 但必须逐场景确认，
-  `npm run golden:update` 是最后手段。
-- `merged team LP` 指向 `server/match/finalAssault.js`。已排除：`damage()` 在
-  `SharedBossPool`(109) 与 `CreditPool`(164) 是**两个不同的类**，不是重复声明。
-- `SharedItemPool` 的 `scale` 仍由 `pool.js:36` 传入；`debtOf/owe/repay` 都在。
-  所以 20 人分组池的“缩容”不是没接上 scale 那么简单，要实测。
-- 可疑点（按优先级）：`SharedItemPool.cap()` 用 `Math.ceil(cap * scale)` 而我们保留了它 ——
-  上游的 `debt` 记账是否假设 cap 是**未缩放**的原值？若是，`over/debt` 的判定基准就错了。
-  这可以直接解释“八人领队战共享池”和“merged team LP”。
+```
+m.itemPoolFor(b).left(PACK) === 2       ← 另一组不受影响
+a.upgradeItem(x) === false              ← 金色升级仍被库存门拦住
+a._rollItemSlot() === null              ← 抽卡仍排除空库存
+b._rollItemSlot().id === PACK
+ca.rollItem({tier:5}) === null          ← 效果 roll 同样
+cb.rollItem({tier:5}) === PACK
+ca.rollPool('test_group_item') === null
+cb.rollPool('test_group_item') → { kind:'item', id:PACK }
+checkInvariants(m)                      ← debt ≤ overage 的不变量必须成立
+```
 
-## 下一步
+### 其他因此受影响的失败（同源，改完再看）
 
-1. 先在 `test/match/` 里单跑那三个 20 人用例，拿到具体断言值。
-2. 检查 `cap()` 缩放与 `debt/over` 基准是否一致（上面那条怀疑）。
-3. 逐个核对 10 个金标准场景的差异来源（上游数值 vs 解冲突错）。
+```
+nine players: a five-player group does not expand private DIY stock
+twenty client-combat participants finish a complete match with grouped pools and no engine errors
+twenty players: buying, merging, selling and eliminating DIY / stand-in pieces …
+effect-only items are never shop items: not in shopItemsByTier, never in the item slot, the pools or the 机变 supply
+```
+
+## 闸门 1（金标准，10 个场景 digest 不同）
+
+**很可能是上游 0.3.0 自己的数值改动**，但必须逐场景确认后在
+`docs/development/records/` 里写明原因。`npm run golden:update` 是最后手段，不是第一步。
+
+## 下一步顺序
+
+1. 按上表改 `group-stock.test.js`（**只改那 4 行，保留组隔离断言**）。
+2. 重跑 `node tools/verify-20p.mjs`，看闸门 2 是否清掉。
+3. 逐个核对 10 个金标准场景。
 4. 全量 `node --test`、浏览器实测、皮肤测试。
 5. 全绿后删掉 `merge-notes/` 与 `.cache/`。
-
-## 命令
-
-```bash
-node tools/verify-20p.mjs
-node --test test/wire-pressure.test.js
-node tools/verify-20p.mjs --full
-```
