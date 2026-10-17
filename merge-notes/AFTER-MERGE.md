@@ -23,6 +23,37 @@
 判据已存档：`node test/plugins/csp.test.js` 在**上游代码**上也以 `-1073740791`（`0xC0000409`）退出，
 同样前两个测试通过后进程被杀。
 
+## 剩余 `test/match` 失败的**精确分类**
+
+| | 上游 | 本分支 |
+|---|---|---|
+| 测试数 | 906 | **1113**（+207 是我们 20 人的）|
+| 失败 | 4 | 13 |
+
+**上游也失败的（环境／上游自身，不用管）：**
+```
+a match host that runs out of memory (a child process)
+match hosts in rooms (P1c): verification, the watchdog, crashes
+runner: true infinite script and slow data step terminate …
+the watchdog: a worker that stops beating is terminated …
+SP_VERIFY=all in its match host …
+script operator: permission child and Worker have byte-identical ev/results
+```
+
+**只有我们失败的（真正要看的，8 个）：**
+```
+co-op spectator removed by the host while the match runs
+public throttling starts at broadcast time even when building the previous snapshot was delayed
+all verification lets an unrelated real timer run between battle slices
+sample verification lets an unrelated real timer run between battle slices
+data set: Worker and in-page snapshots/events/results match every batch
+runner on a real Worker reports its simulated cs and cached detail stats
+rehearsal capabilities: official-registry start effects cannot write any player field or the live wave
+rehearsal capabilities: plugin start effects cannot write any player field or the live wave
+consume-on-equip built-ins（合并前就失败：`h.sched.runUntil is not a function`）
+```
+
+
 
 ## 全量测试的分目录快照
 
