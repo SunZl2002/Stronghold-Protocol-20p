@@ -216,22 +216,19 @@ export class SharedPool {
  * 2026-10-14 (#624). [ASSUMED] An item that is consumed, destroyed or removed by elimination no longer occupies
  * stock, consistently with the video's ownership model; this is not a per-match purchase limit. */
 export class SharedItemPool {
+  // this fork's `scale` (20-player rooms scale the per-item copy cap) plus upstream 0.3.0's `debt` (#624: copies an
+  // already-displayed card took past the cap — recorded, never handed out again by a roll)
   constructor(gd, players, { scale = 1 } = {}) {
     this.gd = gd;
     this.players = players;
     this.scale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    /** @type {Map<string, number>} base id → copies taken past the cap by an already-displayed card */
+    this.debt = new Map();
   }
   cap(id) {
     const cap = this.gd.itemPoolCopies(id);
     return cap == null ? null : Math.ceil(cap * this.scale);
   }
-  constructor(gd, players) {
-    this.gd = gd;
-    this.players = players;
-    /** @type {Map<string, number>} base id → copies taken past the cap by an already-displayed card */
-    this.debt = new Map();
-  }
-  cap(id) { return this.gd.itemPoolCopies(id); }
   need(id) { return this.gd.isGolden(id) ? 2 : 1; }
   // All owned equipment counts, including a noPool-marked trait grant. noPool only affects the acquisition gate.
   held(id) {
