@@ -1,87 +1,65 @@
-# 0.3.0 合并：状态（2026-10-17 深夜）
+# 0.3.0 合并：状态（2026-10-17 深夜，第二轮）
 
-## ✅ 三道闸门全绿
+## ✅ 三道闸门全绿（不变）
 
 ```
-node tools/verify-20p.mjs
-  闸门 1  通过    金标准（288 个场景全部匹配）
-  闸门 2  通过    20 人容量与分组库存回归
-  闸门 3  通过    版本一致性 / 发布接线
-  结论：全部通过。
-
-D036  test/wire-pressure.test.js            ✅
-48 / 48 冲突已解 · 0 个冲突标记 · 95 个改动 JS 文件 node --check 全过
+闸门 1  通过    金标准 288/288
+闸门 2  通过    20 人容量与分组库存
+闸门 3  通过    版本一致性 / 发布接线
 ```
 
-## ⚠️ 全量测试还差 13 个（`test/match` 1113 个里 1097 过）
+## 用「合并前提交」做的对照（决定性）
 
-`test/match` 一开始 25 个失败，已修到 13。剩下的按类：
+在 `..\sp-premerge`（= `48ad2bc1`，合并的第一个父提交）跑同一批文件：
 
-### A. 需要真子进程 / Worker（环境相关，可能不是 bug）
-```
-a match host that runs out of memory (a child process)
-match hosts in rooms (P1c): verification, the watchdog, crashes
-the watchdog: a worker that stops beating is terminated …
-runner on a real Worker reports its simulated cs and cached detail stats
-data set: Worker and in-page snapshots/events/results match every batch
-SP_VERIFY=all in its match host: a result naming the room's content …
-```
-**先确认这些是不是本机环境限制**（没有可用 Worker / 子进程超时），再判断是不是合并引入的。
-判据：在合并前的提交上跑一遍同一批用例。
+| 文件 | 合并前 | 合并后 | 结论 |
+|---|---|---|---|
+| `test/match/runner.test.js` | 15/15 过 | 20/20 过 | ✅ 上游加了 5 个，全过 |
+| `test/match/merge.test.js` | 13 过 **1 败** | 14 过 **1 败** | ⚠️ **同一个失败**：`h.sched.runUntil is not a function` → **与合并无关**，测试用了一个不存在的 harness API |
+| `test/match/lobby-integration.test.js` | 5/5 过 | 有失败 | ⚠️ 合并相关（见下）|
+| `test/match/connection.test.js` | 13/13 过 | 有失败 | ⚠️ 合并相关（见下）|
+| `test/match/plugin-host.test.js` | **文件不存在** | 有失败 | 0.3.0 新增（子进程 match host）|
 
-### B. 计时敏感（可能是 flaky）
-```
-all verification lets an unrelated real timer run between battle slices
-sample verification lets an unrelated real timer run between battle slices
-runner: true infinite script and slow data step terminate, stop reports …
-public throttling starts at broadcast time even when building the previous snapshot was delayed
-```
-同一判据：在合并前的提交上跑一遍。
+`plugin-host` 里 **「a whole match of AI seats in its match host (a child process)」是通过的（7.8 s）** ——
+所以子进程环境没问题，`the room keeps its content set` 是**真断言失败**。
 
-### C. 看着像真 bug（优先级最高）
-```
-consume-on-equip built-ins: 盟约之币 funds, 随身身份牌 layers, 人事部文档 cap 9, 博士投影 promote; Arts limit
-rehearsal capabilities: official-registry start effects cannot write any player field or the live wave
-rehearsal capabilities: plugin start effects cannot write any player field or the live wave
-co-op spectator removed by the host while the match runs …
-real-time co-op over websockets with the real simulation …
-```
-`consume-on-equip` 在 `test/match/merge.test.js:276`，断言链从 `ps.funds === 1`（盟约之币）
-到 `ps.deployCap === 9`（人事部文档）到 `a.id === goldenId`（博士投影）。
-**先逐条打印这些值，看第一个不匹配的是哪个** —— 大概率是效果分发（`effectsMeta`）里某条内置规则被合并掉了。
+## 所以现在的分类（修正上一轮）
 
-`rehearsal capabilities` 那两个说的是「start effects 不能写玩家字段或实时波次」，
-可能与我们保留的 `noPool` / 效果权限有关。
+### ❌ 与合并无关（可以先忽略）
+- `consume-on-equip built-ins`（`merge.test.js:276`）—— 合并前后都 `runUntil is not a function`。
+  要么给 `VirtualScheduler` 补 `runUntil`，要么这个测试本来就没跑过。
 
-## 这轮修掉的（都在 git 历史里）
+### ⚠️ 合并相关，值得查（按优先级）
+1. **`plugin-host`：「the room keeps its content set」** —— 房间的 content set（`cs`）在 match host 里丢了。
+   最可能在 `lobby.js` 的 `room.content` / `holdContent` / `resolveContent`（我合并过这一块），或
+   `createSessionStack(opts, { data, log, content, plugins: roomSets, hosts })` 的接线。
+2. **`lobby-integration`：「co-op spectator removed by the host while the match runs」** ——
+   合并前 5/5 过，合并后失败，说明 `room.removeSpectator` / seat 释放的语义被改了。
+3. **`connection`：「public throttling starts at broadcast time…」** —— 计时/节流语义。
+4. **`rehearsal capabilities` ×2** —— start effects 不能写玩家字段或实时波次；可能和
+   `effectsMeta` 的权限/隔离有关。
+5. **`verify` 系列 2 个**：「lets an unrelated real timer run between battle slices」。
 
-| # | 文件 | 症状 |
-|---|---|---|
-| 1 | `bands/meta.js` | **同一 grant 跑两遍** → 金标准 2 个场景偏离（`rng.meta` +20、`ai_1` 多放一个单位、羁绊层翻倍）|
-| 2 | `simHost.js` / `runner.js` | `LocalBossPool.sync` 的第三参数 `maxHp` 被丢掉 → 20 人 Boss 池不缩小 |
-| 3 | `simHost.js` / `runner.js` | `wire` 永远 null → `deliveryType` 恒为 `b.yield`，**b.result 一个都不发** |
-| 4 | `settle.js` | `creditedKillsOf(up)` 循环外引用 → 每次结算抛 ReferenceError → 对局第 1 轮就死 |
-| 5 | `phases.js` | 上游单组的全局收尾留下 → 第一组打完整个草稿就结束 |
-| 6 | `spDraft.js` | 我们的早返回在前、上游 `also` 成死代码 → 突变细胞抽不到 |
-| 7 | `items.js` | 还款用第一组的池 → 还错池子 |
-| 8 | 7 个文件 | 「都留」造成语法级损坏（`pool.js` 两个 constructor 等）|
-| 9 | `index.js` / `routes.js` | 运行期缺失（`startedAt` / `assetCache` / 残留 `track(res)`）|
+### 环境/规模
+`test/e2e`（`real-time co-op over websockets with the real simulation` 14 s+）等大用例还没单独跑过。
 
-## 剩下的验证
+## 这轮之前的修复（都在 git 历史里）
 
-1. 上面 A/B/C 三组逐一确认
-2. 浏览器实测：皮肤（`skinsOn` / 一键装备）、聊天弹幕、作战统计、官方特效、插件系统
-3. `node tools/verify-20p.mjs --full`
-4. 全绿后删掉 `merge-notes/` 与 `.cache/`
+`bands/meta.js` 重复 grant（金标准根因）、Boss 池的 `maxHp` 丢失、`wire` 恒 null 导致 `b.result` 从不发出、
+`settle.js` 的 `up` 越界、`phases.js` 的全局草稿收尾、`spDraft.js` 的死代码 `also`、`items.js` 还错池子、
+7 个「都留」语法损坏、`index.js`/`routes.js` 运行期缺失。
 
-## 已知的、可接受的代价
+## 下一步
 
-- `data/assets.json` 保留我们的（中日）。0.3.0 的英/韩/本土配音在此分支**没有声音** ——
-  磁盘上没有那 5,712 个文件，且 `tools/assets/plan.mjs` 按设计只计划 cn/jp。
-- `public/assets/local` 不存在 → 0.3.0 的战场会降级；要补需要本地客户端 + 上游 `tools/local-extract/extract.py`。
+1. 查 `plugin-host` 的「the room keeps its content set」→ 大概率在 `lobby.js` 的 content 生命周期
+2. 查 `lobby-integration` 的观战者移除
+3. 其余按需
+4. 最后：浏览器实测（皮肤 / 弹幕 / 作战统计 / 官方特效 / 插件）+ `verify-20p --full`
+5. 全绿后删 `merge-notes/`、`.cache/`，并移除 `..\sp-premerge` worktree：
+   `git worktree remove ../sp-premerge --force`
 
-## 两处**故意**与上游不同
+## 已知代价 / 故意偏离（不变）
 
-1. **多波联防保留全部奖励**（`settle.js` 按 `uniteResults` 累计）——
-   `test/match/unite.test.js` 的用例名就是「retain all rewards」。
-2. **Boss 池的第三参数 `maxHp`**（20 人房里有人离开时池子缩小）—— 上游的单波次模型里没有这件事。
+- 英/韩/本土配音无声音（只有中日，`data/assets.json` 保留我们的）
+- `public/assets/local` 不存在 → 官方战场降级
+- 多波联防保留全部奖励、Boss 池第三参数 `maxHp` —— 都是 20 人契约，故意与上游不同
