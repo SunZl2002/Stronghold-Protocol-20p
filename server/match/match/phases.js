@@ -171,6 +171,13 @@ export class MatchPhases {
           if (this.draft === d && this.phase === PHASE.BAND_DRAFT && d.groups.every((x) => x.done)) this.finishBandDraft(false);
         });
       }
+    this.cancel(this._turnTimer);
+    this._turnTimer = null;
+    while (d.idx < d.order.length && d.picks[d.order[d.idx]]) d.idx++; // loop-cap: draft order
+    if (d.idx >= d.order.length) {
+      d.turnDeadline = 0;
+      this.deadline = 0;
+      this.later(0, () => this.finishBandDraft(false));
       return;
     }
     const token = g.token;
