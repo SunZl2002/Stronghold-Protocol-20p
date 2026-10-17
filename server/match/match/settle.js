@@ -39,7 +39,10 @@ export class MatchSettle {
     for (const ps of alive) {
       const r = this.lastResults.get(ps.playerId) || { leaked: [], perfect: true, coins: 0, layerGains: {}, killed: 0, damageDealt: 0 };
       const counted = (r.leaked || []).filter((l) => l && l.counted !== false).length;
-      const loss = plan && plan.leakers.includes(ps) ? Math.min(cap, survivors.get(ps.playerId) || 0) : Math.min(cap, counted);
+      // upstream gates the 联防 charge on `uniteRan`: a 联防 that could not run at all (synthetic result) must charge the
+      // leaker's OWN leaks, not the survivors count. This fork had kept the older `plan &&` form, which charged the
+      // survivor number even when nothing ran — one of the two differences gate 1 found (teamLp 50 → 71).
+      const loss = uniteRan && plan.leakers.includes(ps) ? Math.min(cap, survivors.get(ps.playerId) || 0) : Math.min(cap, counted);
       if (this.uniteResultView) this.uniteResultView.losses[ps.playerId] = loss;
       ps.lp -= loss;
       ps.stats.lpLost += loss;
@@ -48,18 +51,17 @@ export class MatchSettle {
       ps.stats.dmgDealt += Number(r.damageDealt) || 0;
       ps.stats.healing += Number(r.healingDone) || 0;
       if (r.perfect !== false && counted === 0) ps.stats.perfectRounds++;
-      // bounty coins (own battle + unite kills) are credited to the next prep. `up` is each unite result's entry for THIS
-      // player; a 20-player room can have several (a group of four), so credited kills accumulate in the loop. The
-      // merged line used to read `creditedKillsOf(up)` outside the loop, where `up` is out of scope.
+      // bounty coins (own battle + unite kills) are credited to the next prep. Upstream credits the FINAL 联防 result only
+      // (`uniteResult`), not every entry of plan.history; the merge had left the loop form, which credited the history too
+      // and shifted the economy (the second difference gate 1 found).
       let coins = Math.max(0, Math.trunc(Number(r.coins) || 0));
-      let unitedCredited = 0;
-      for (const up of uniteResults.map((result) => result.perPlayer && result.perPlayer[ps.playerId]).filter(Boolean)) {
+      const up = uniteResult && uniteResult.perPlayer && uniteResult.perPlayer[ps.playerId];
+      if (up) {
         coins += Math.max(0, Math.trunc(Number(up.coins) || 0));
         ps.stats.dmgDealt += Number(up.damageDealt) || 0;
         ps.stats.kills += Number(up.killed) || 0;
-        unitedCredited += creditedKillsOf(up);
       }
-      ps.creditedKills += creditedKillsOf(r) + unitedCredited;
+      ps.creditedKills += creditedKillsOf(r) + creditedKillsOf(up);
       // perfect-payout bounties (战术特训): own phase perfect
       for (const b of ps.bounties) if (b.card.payout === 'perfect' && counted === 0 && r.perfect !== false) coins += b.card.coin;
       if (coins > 0) { ps.pendingFunds += coins; ps.stats.fundsGained += coins; }
