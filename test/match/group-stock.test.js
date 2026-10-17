@@ -73,10 +73,17 @@ test('exhausting one equipment group gates only its shop, reward, golden upgrade
     assert.ok(x && y);
     assert.equal(m.itemPoolFor(a).left(PACK), 0);
     assert.equal(m.itemPoolFor(b).left(PACK), 2);
-    assert.equal(a.buy(0).error, 'SOLD_OUT');
-    assert.equal(a.funds, 20);
-    assert.equal(a.pickReward(0).error, 'SOLD_OUT');
-    assert.equal(a.offers.length, 1);
+    // #624 (the owner's choice of 2026-10-17, buying upstream's rule): a shop slot ALREADY on screen stays purchasable
+    // when its group's stock runs out, and the copies that did not fit become the pool's DEBT rather than a refusal. A
+    // reward offer already displayed works the same way. What stays gated is everything that DRAWS from the pool, and
+    // the other group is untouched throughout.
+    assert.ok(a.buy(0).ok, 'a displayed slot may overdraw');
+    assert.equal(a.funds, 19);
+    assert.equal(m.itemPoolFor(a).debtOf(PACK), 1);
+    assert.ok(a.pickReward(0).ok, 'a displayed reward may overdraw');
+    assert.equal(a.offers.length, 0);
+    assert.equal(m.itemPoolFor(a).debtOf(PACK), 2);
+    assert.equal(m.itemPoolFor(a).left(PACK), 0, 'the debt is never public supply');
     assert.equal(a.upgradeItem(x), false);
     assert.equal(a._rollItemSlot(), null);
     assert.equal(b._rollItemSlot().id, PACK);
@@ -87,11 +94,14 @@ test('exhausting one equipment group gates only its shop, reward, golden upgrade
     assert.deepEqual(cb.rollPool('test_group_item'), { kind: 'item', id: PACK });
     assert.ok(b.pickReward(0).ok);
     assert.equal(m.itemPoolFor(b).left(PACK), 1);
-    assert.ok(a.destroy(x.uid).ok);
-    assert.equal(m.itemPoolFor(a).left(PACK), 1);
-    assert.equal(m.itemPoolFor(b).left(PACK), 1);
-    assert.ok(a.pickReward(0).ok);
-    assert.equal(m.itemPoolFor(a).left(PACK), 0);
+    // The ledger and the stock are two different things: `left` is cap - held, so the two overdrawn copies stay "held"
+    // and the only thing that balances them is the debt. `checkInvariants` is what holds the two together (it fails on
+    // "held > cap without debt"), which is why the debt is NOT repaid here: repaying while the copies are still in hand
+    // is an invalid state, and the invariant says so.
+    const pool = m.itemPoolFor(a);
+    assert.equal(pool.debtOf(PACK), 2, 'two copies over the cap are owed');
+    assert.equal(pool.left(PACK), 0, 'the debt never turns into supply');
+    assert.equal(m.itemPoolFor(b).left(PACK), 1, 'the other group still sees its own stock');
     checkInvariants(m);
   } finally { m.dispose(); }
 });

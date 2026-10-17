@@ -103,13 +103,17 @@ test('nine players: a five-player group does not expand private DIY stock', () =
   const h = makeMatch({ seats, fake: true });
   const ps = h.ps('p_8');
   assert.equal(h.m.poolGroups[1].playerIds.length, 5);
-  assert.equal(ps.diyStock.cap(slotId), 8, 'private tier V remains the original eight copies');
+  // 8 base copies × the co-op multiplier: upstream #650 (maintainer, 2026-10-15) doubles each player's PRIVATE 自选 stock
+  // as well as the shared pool, because doubling only the shared pool diluted a 自选 operator in the copy-weighted rolls.
+  // What this test guards is unchanged — the stock does NOT scale with GROUP SIZE (5 players here would make it 40 if it
+  // did) and it never enters a shared group pool.
+  assert.equal(ps.diyStock.cap(slotId), 16, 'private tier V: eight copies × the co-op multiplier, not × the group size');
   for (const group of h.m.poolGroups) assert.equal(group.pool.has(slotId), false);
   const piece = ps.acquireChess(slotId, { source: 'test' });
   assert.ok(piece);
-  assert.equal(ps.diyStock.left(slotId), 7);
+  assert.equal(ps.diyStock.left(slotId), 15);
   ps.eliminate(1);
-  assert.equal(ps.diyStock.left(slotId), 8);
+  assert.equal(ps.diyStock.left(slotId), 16);
   h.invariants();
   h.m.dispose();
 });
@@ -152,11 +156,13 @@ test('twenty players: buying, merging, selling and eliminating DIY / stand-in pi
   for (let i = 0; i < 3; i++) buy(slotId);
   const diyElite = ps.allChess().find((p) => p.id === ps.gd.goldenIdOf(slotId));
   assert.ok(diyElite);
-  assert.equal(ps.diyStock.left(slotId), 5);
-  assert.equal(h.ps('p_0').diyStock.left(slotId), 8);
-  assert.equal(h.ps('p_8').diyStock.left(slotId), 8);
+  // Private 自选 stock is 16 (8 base × the co-op multiplier of upstream #650, which doubles it so a 自选 operator is not
+  // diluted against the doubled shared pool); three copies bought → 13, and selling the elite pays all three back.
+  assert.equal(ps.diyStock.left(slotId), 5 + 8);
+  assert.equal(h.ps('p_0').diyStock.left(slotId), 16);
+  assert.equal(h.ps('p_8').diyStock.left(slotId), 16);
   assert.deepEqual(m.handle(ps.playerId, { t: 'g.sell', uid: diyElite.uid }), { ok: true });
-  assert.equal(ps.diyStock.left(slotId), 8);
+  assert.equal(ps.diyStock.left(slotId), 16);
 
   const id = [...ps.pool.entries.keys()].find((id) => ps.fieldsStandIn(id)
     && ps.pool.left(id) >= 3 && !ps.allChess().some((p) => ps.gd.baseIdOf(p.id) === id));
@@ -171,12 +177,12 @@ test('twenty players: buying, merging, selling and eliminating DIY / stand-in pi
 
   const ctx = makeCtx(m, ps, { key: 'test' }, 'onTest');
   assert.ok(ctx.grantChess(slotId));
-  assert.equal(ps.diyStock.left(slotId), 7, 'effect grants take the receiver\'s private stock');
+  assert.equal(ps.diyStock.left(slotId), 15, 'effect grants take the receiver\'s private stock');
   assert.ok(ctx.grantChess(id));
   assert.equal(ps.pool.left(id), before[4] - 1, 'stand-in still spends the original operator\'s group copy');
   h.invariants();
   ps.eliminate(1);
-  assert.equal(ps.diyStock.left(slotId), 8);
+  assert.equal(ps.diyStock.left(slotId), 16);
   assert.deepEqual(m.poolGroups.map((g) => g.pool.left(id)), before);
   h.invariants();
   assert.equal(m.errorCount, 0);

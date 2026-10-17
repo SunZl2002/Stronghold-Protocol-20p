@@ -19,7 +19,11 @@ export class PlayerItems {
    */
   releaseItemStock(piece) {
     if (!piece || piece.kind !== 'item' || !this.m?.itemPool) return 0;
-    return this.m.itemPool.repay(piece.id, this.m.itemPool.need(piece.id));
+    // The debt belongs to the GROUP pool the piece was taken from (20-player rooms split stock per group). `Match.itemPool`
+    // is only the first group's compatibility getter, so repaying through it credited the wrong ledger and left the real
+    // group holding a debt with no overage behind it (the "debt > overage" invariant then fired).
+    const pool = typeof this.m.itemPoolFor === 'function' ? this.m.itemPoolFor(this) : this.m.itemPool;
+    return pool.repay(piece.id, pool.need(piece.id));
   }
 
   /**

@@ -248,26 +248,22 @@ export class MatchSpDraft {
       return out;
     };
     if (p && p.kind === 'equip') {
+      // ONE implementation per branch: this fork's `stock` (the drawing player's GROUP pool) with upstream 0.3.0's
+      // `also` list. The merge had left this fork's early returns first and upstream's `withAlso` versions unreachable
+      // behind them, so a pool's `also` (pool_equip_kathe → 突变细胞) could never be drawn.
       if (Array.isArray(p.weighted) && p.weighted.length) {
         const pairs = p.weighted.filter((x) => Array.isArray(x) && this.gd.item(x[0]) && stock.canGain(x[0]));
-        return stock.pick(rng, pairs.map(x => x[0]), new Map(pairs));
-      }
-      if (Array.isArray(p.items) && p.items.length) {
-        const items = p.items.filter((id) => this.gd.item(id));
-        return stock.pick(rng, items);
-        const pairs = p.weighted.filter((x) => Array.isArray(x) && this.gd.item(x[0]) && this.itemPool.canGain(x[0]));
         for (const id of also) if (!pairs.some((x) => x[0] === id)) pairs.push([id, 1]);
-        return this.itemPool.pick(rng, pairs.map(x => x[0]), new Map(pairs));
+        return stock.pick(rng, pairs.map((x) => x[0]), new Map(pairs));
       }
       if (Array.isArray(p.items) && p.items.length) {
         const items = p.items.filter((id) => this.gd.item(id));
-        return this.itemPool.pick(rng, withAlso(items));
+        return stock.pick(rng, withAlso(items));
       }
       let list;
       if (Array.isArray(p.tiers) && p.tiers.length) list = p.tiers.flatMap((t) => this.gd.shopItemsByTier[t] || []);
       else list = tierList(1, p.maxTier === 'shopLevel' ? Math.max(1, Math.min(6, shopLevel)) : 6);
-      return stock.pick(rng, list);
-      return this.itemPool.pick(rng, withAlso(list));
+      return stock.pick(rng, withAlso(list));
     }
     const list = Number.isInteger(tier) ? tierList(tier, tier) : tierList(1, Math.max(1, Math.min(6, maxTier)));
     return stock.pick(rng, list);
