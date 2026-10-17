@@ -31,15 +31,26 @@
 
 ### ⚠️ 合并相关，值得查（按优先级）
 
-> **已拿到具体值**：`plugin-host` 的失败是 `back.content.cs` 与 `st.content.cs` **不相等**（不是 null）：
-> `actual 1a71d6ad…efa5` vs `expected 205305c6…6e2f` —— 房间从崩溃的 match host 回到大厅时 **content set 变了**。
-> **已排除**：`resolveContent` 的 4 个调用点、`room.content` 的 3 个赋值点（811 / 817 / 479）都与上游**完全一致**。
-> **下一个该看**：回到大厅那条路径上谁重算了 content —— 可能是 `room.state` 里 content 字段的来源，
-> 或 host 崩溃后 `room.match = null` 时触发的一次 re-resolve。
-> 另外这一个用例是**子进程**跑的，而同一文件里「a whole AI-seat match in a match host」**7.8 s 通过** ——
-> 所以子进程环境没问题，这是真断言失败。
+> **探针结果（重要）**：把断言的 `st.content` / `back.content` 打出来：
+>
+> ```
+> ST   {"cs":"205305c6…","vanilla":false,"plugins":[{"id":"rules",…}]}
+> BACK {"cs":"1a71d6ad…","vanilla":true,"plugins":[]}
+> ```
+>
+> **房间的 content 被重置成了 vanilla**，不是「另一个自定义集」。而且**每次跑失败的用例会换**：
+> 上一轮是 `a match host that runs out of memory`，这一轮是 `the watchdog: a worker that stops beating…`
+> —— 说明这是**竞态**，不是稳定的逻辑错误。
+>
+> **已排除**：`resolveContent` 的 4 个调用点、`room.content` 的 4 个赋值点（320/479/811/817/994）、
+> `onMatchEnd`（不动 content）、以及 `activeHumans().length === 0 → disposeRoom('empty')` 这两处
+> 都与上游**完全一致**。
+>
+> **下一个该看的**：host 崩溃那一刻玩家是否被短暂判为「不在房间里」——
+> 若 `activeHumans()` 变 0，`onMatchEnd` 会 `disposeRoom('empty')`，玩家随后收到的是**新房间**的 vanilla 状态，
+> 正好就是上面 BACK 的样子。方向：`startGrace` / 断线判定 / proxy 崩溃时的 session 处理。
 
-1. **`plugin-host`：「the room keeps its content set」** —— 见上。
+1. **`plugin-host`（watchdog / out-of-memory 两个用例）** —— 见上。
 2. **`lobby-integration`：「co-op spectator removed by the host while the match runs」** ——
    合并前 5/5 过，合并后失败，说明 `room.removeSpectator` / seat 释放的语义被改了。
 3. **`connection`：「public throttling starts at broadcast time…」** —— 计时/节流语义。
