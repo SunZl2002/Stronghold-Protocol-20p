@@ -36,18 +36,25 @@ export class InPageSimHost {
   }
   progress() { return this.sim.spec.battleProgress(this.battle); }
   uniteLeft() { return this.sim.spec.uniteLeft(this.battle); }
+  /**
+   * @returns {{ result: any, unfitted: boolean }} unfitted: this fork's over-large result - sent compacted but NOT
+   * fitted, and therefore delivered as a body-less b.yield frame (the server then asks for it in pieces).
+   */
   compactResult(options) {
     const s = this.sim.spec;
     const raw = this.battle.result();
-    // this fork: the server must see every surviving enemy. A compactResult list cap or an oversized frame would
-    // otherwise silently undercharge a leaker, or close the socket at the 64 KB inbound limit — so an over-large result
-    // is sent compacted but NOT fitted (the server then applies its own accounting to the full list).
+    // The server must see every surviving enemy. A compactResult list cap or an oversized frame would otherwise silently
+    // undercharge a leaker, or close the socket at the 64 KB inbound limit.
     const tooManyEntries = Object.keys(raw.perPlayer || {}).length > RESULT_LIMITS.players
       || Object.values(raw.perPlayer || {}).some((p) => (p?.leaked?.length || 0) > RESULT_LIMITS.leaked)
       || (raw.unspawned?.length || 0) > RESULT_LIMITS.unspawned;
     const r = s.compactResult(raw);
-    if (tooManyEntries) return r;
-    return typeof s.fitResult === 'function' ? s.fitResult(r, options) : r;
+    if (tooManyEntries) return { result: r, unfitted: true };
+    const fitted = typeof s.fitResult === 'function' ? s.fitResult(r, options) : r;
+    // fitResult answers null when even the compacted form cannot meet the frame budget (a result that fits the character
+    // count but exceeds 60 KiB of UTF-8): that is the other half of this fork's yield condition.
+    if (!fitted) return { result: r, unfitted: true };
+    return { result: fitted, unfitted: false };
   }
   unitStats(id) {
     const u = this.battle?.unitById?.(id);
@@ -61,7 +68,9 @@ export class InPageSimHost {
       ...(u.def?.diyFor && u.def.loadout?.diy ? { diy: { ...u.def.loadout.diy } } : {}),
     }));
   }
-  syncPool(hp, acked) { this.battle?.sharedBoss?.sync?.(hp, acked); }
+  // `max` is this fork's: a 20-player boss pool shrinks when a player leaves and the server rebroadcasts b.pool with
+  // the new maximum, so the local pool must resize with it (LocalBossPool.sync takes all three).
+  syncPool(hp, acked, max) { this.battle?.sharedBoss?.sync?.(hp, acked, max); }
   forceEnd(reason) { this.battle?.forceEnd(reason); }
   stop() { this.battle = null; }
 }
@@ -128,7 +137,7 @@ export class WorkerSimHost {
   async step(n, opts) { return this.accept(await this.rpc('step', [n, opts])); }
   progress() { return this.packet.progress; }
   uniteLeft() { return this.packet.left; }
-  compactResult() { return this.packet.result; }
+  compactResult() { return { result: this.packet.result, unfitted: !!this.packet.unfitted }; }
   unitStats(id) {
     if (!this.stopped && !this.statsPending.has(id)) {
       this.statsPending.add(id);
@@ -137,7 +146,7 @@ export class WorkerSimHost {
     return this.statsCache.get(id) || null;
   }
   ownerOps(pid) { return this.packet?.ops?.[pid] || []; }
-  syncPool(hp, acked) { return this.rpc('syncPool', [hp, acked]).catch(() => {}); }
+  syncPool(hp, acked, max) { return this.rpc('syncPool', [hp, acked, max]).catch(() => {}); }
   async forceEnd(reason) { this.accept(await this.rpc('forceEnd', [reason])); }
   stop(err = failure('PLUGIN_WORKER_STOPPED', 'simulation worker stopped')) {
     if (this.stopped) return;

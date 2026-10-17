@@ -527,12 +527,14 @@ export function createBattleRunner(deps) {
       progress(e, true);
       e.resultSent = true;
       let result = null;
-      let wire = null;
+      let unfitted = false;
       try {
-        result = e.host.compactResult({ bossLike: bossLike(e), battleId: e.battleId });
+        ({ result, unfitted } = e.host.compactResult({ bossLike: bossLike(e), battleId: e.battleId }));
       } catch (err) { console.warn('[runner] result failed', err); recordError('runner', err, 'result failed'); }
-      e.result = wire || result;
-      e.deliveryType = wire ? 'b.result' : 'b.yield';
+      // unfitted is this fork's over-large result (simHost.compactResult): it goes out as a body-less b.yield frame
+      // instead of a b.result, exactly as before 0.3.0's host refactor - where the removed `wire` carried that decision.
+      e.result = result;
+      e.deliveryType = unfitted ? 'b.yield' : 'b.result';
       if (e.result) {
         // the view answers with the settlement voice of this battle (screens/game.js → audio.voice result*): the
         // compact result carries the leaks and the kill count the slot is picked from
@@ -823,7 +825,7 @@ export function createBattleRunner(deps) {
       // run there. An in-page Battle gets the meter only when 作战统计 is on (default off; a test may pin it).
       if (metricsEnabled() && !e.host.remote) e.combatMetrics = trackCombat(battle);
       e.t0 = clock() - (e.elapsed / e.speed) * 1000;
-      if (lastPool) await e.host.syncPool(lastPool.hp, lastPool.acked ? lastPool.acked[e.fieldId] : undefined);
+      if (lastPool) await e.host.syncPool(lastPool.hp, lastPool.acked ? lastPool.acked[e.fieldId] : undefined, lastPool.max);
       if (e.endReason) await endBattle(e);
       // silent catch-up to the field's clock before it is shown (a reconnect / observing a running field) — for the view
       // asked for; a superseded authority catches up in the background (advance)
@@ -859,7 +861,7 @@ export function createBattleRunner(deps) {
     lastPool = msg;
     // a pending battle not built yet takes lastPool when it is built
     for (const e of [...entries.values(), ...pending.values()]) {
-      if (e.battle && !e.failed) e.host.syncPool(msg.hp, msg.acked ? msg.acked[e.fieldId] : undefined);
+      if (e.battle && !e.failed) e.host.syncPool(msg.hp, msg.acked ? msg.acked[e.fieldId] : undefined, msg.max);
     }
     emit('pool', msg);
   }
