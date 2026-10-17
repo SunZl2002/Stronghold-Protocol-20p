@@ -48,14 +48,18 @@ export class MatchSettle {
       ps.stats.dmgDealt += Number(r.damageDealt) || 0;
       ps.stats.healing += Number(r.healingDone) || 0;
       if (r.perfect !== false && counted === 0) ps.stats.perfectRounds++;
-      // bounty coins (own battle + unite kills) are credited to the next prep
+      // bounty coins (own battle + unite kills) are credited to the next prep. `up` is each unite result's entry for THIS
+      // player; a 20-player room can have several (a group of four), so credited kills accumulate in the loop. The
+      // merged line used to read `creditedKillsOf(up)` outside the loop, where `up` is out of scope.
       let coins = Math.max(0, Math.trunc(Number(r.coins) || 0));
+      let unitedCredited = 0;
       for (const up of uniteResults.map((result) => result.perPlayer && result.perPlayer[ps.playerId]).filter(Boolean)) {
         coins += Math.max(0, Math.trunc(Number(up.coins) || 0));
         ps.stats.dmgDealt += Number(up.damageDealt) || 0;
         ps.stats.kills += Number(up.killed) || 0;
+        unitedCredited += creditedKillsOf(up);
       }
-      ps.creditedKills += creditedKillsOf(r) + creditedKillsOf(up);
+      ps.creditedKills += creditedKillsOf(r) + unitedCredited;
       // perfect-payout bounties (战术特训): own phase perfect
       for (const b of ps.bounties) if (b.card.payout === 'perfect' && counted === 0 && r.perfect !== false) coins += b.card.coin;
       if (coins > 0) { ps.pendingFunds += coins; ps.stats.fundsGained += coins; }

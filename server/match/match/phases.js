@@ -171,16 +171,14 @@ export class MatchPhases {
           if (this.draft === d && this.phase === PHASE.BAND_DRAFT && d.groups.every((x) => x.done)) this.finishBandDraft(false);
         });
       }
-    }
-    this.cancel(this._turnTimer);
-    this._turnTimer = null;
-    while (d.idx < d.order.length && d.picks[d.order[d.idx]]) d.idx++; // loop-cap: draft order
-    if (d.idx >= d.order.length) {
-      d.turnDeadline = 0;
-      this.deadline = 0;
-      this.later(0, () => this.finishBandDraft(false));
+      // a finished group WAITS for the others: the global d.idx advance below ends the whole draft, so it must not run
+      // for a group that is done (the all-groups-done guard above schedules the finish instead)
       return;
     }
+    // (upstream's single-group block used to sit here: a global `_turnTimer` and a global `d.idx`/`d.order` advance that
+    // called finishBandDraft once that one order ran out. This fork's draft is per group — `g.timer` above is cancelled by
+    // clearDraftGroupTimer and `d.idx`/`d.order` only ever held the FIRST group, so on a multi-group table it finished the
+    // whole draft as soon as the first group's picks exhausted it. The per-group timer below replaces it.)
     const token = g.token;
     g.turnSeconds = g.untimed ? 0 : this.bandTurnMs() / 1000;
     if (!g.untimed) {
