@@ -140,8 +140,11 @@ K.preparation_start_gain_chess_from_round = (ps) => ({
     for (const p of ps) {
       const id = p.chess ?? p.chess_id;
       if (ctx.round !== int(p.round, -1) || !id) continue;
-      for (let k = 0; k < Math.max(1, int(p.count, 1)); k++) grant(ctx, id, { requirePool: false, source: 'band', noPool: ctx.gd.isTraitFixedItem(id) });
-      for (let k = 0; k < timesOf(p.count, 1); k++) grant(ctx, id, { requirePool: false, source: 'band' });
+      // ONE loop carrying both sides' intent: upstream counts copies through timesOf (a card's `count` is a list), this
+      // fork marks a fixed-gift identity with `noPool` so a merge keeps it. Keeping BOTH loops granted every chess twice,
+      // which is what shifted a co-op board (ai_1 deployed 4 instead of 3, bond layers doubled) and put gate 1 off on
+      // coop2-NORMAL-3.
+      for (let k = 0; k < timesOf(p.count, 1); k++) grant(ctx, id, { requirePool: false, source: 'band', noPool: ctx.gd.isTraitFixedItem(id) });
     }
   },
 });
