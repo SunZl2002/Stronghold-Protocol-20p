@@ -114,7 +114,7 @@ export function createRequestHandler({ serveStatic, health, log, trustProxy = 'a
         ? 'ASSET_CACHE_EMERGENCY' : 'SERVER_EMERGENCY', emergency: true, retryAfterSec: seconds });
       return;
     }
-    track(res);
+    // (the traffic meter is installed on the response in the listener below, via health.traffic)
     res.setHeader('X-Accel-Buffering', 'no');
     if (parts.rawPath.startsWith(ASSET_CACHE_PREFIX)) {
       if (!assetCache) { sendJson(req, res, 503, { error: 'ASSET_CACHE_UNAVAILABLE' }); return; }

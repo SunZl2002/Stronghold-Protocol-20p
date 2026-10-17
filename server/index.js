@@ -156,6 +156,39 @@ export async function startServer(opts = {}) {
   const studio = opts.studio === false ? null : createStudio({ publicDir, pluginsDir, dataDir, registry: packs, lobby, sessions: registry, log, fetch: opts.fetch });
   const trustedRuntime = await createTrustedRuntime({ registry: packs, log });
   lobby.trustedRuntime = trustedRuntime;
+  // this fork's asset-cache admission layer and the owner settings that drive it
+  // A persisted owner limit overrides the programmatic/env fallback. A null setting means the
+  // default unlimited limiter, while keeping tests and embedders' explicit opts usable.
+  const fallbackAssetCacheLimits = opts.assetCacheLimits;
+  const initialAssetCacheLimits = serverSettings.get().assetCacheLimits ?? fallbackAssetCacheLimits ?? undefined;
+  const assetCache = createAssetCacheHandler({ publicDir, dataDir, log, limits: initialAssetCacheLimits, trustProxy: opts.trustProxy,
+    buildCatalog: opts.assetCacheBuildCatalog, requireAssetCache: () => serverSettings.get().requireAssetCache });
+  let warmingAssetSummary = null;
+  function warmAssetSummary() {
+    if (!warmingAssetSummary) warmingAssetSummary = assetCache.summary()
+      .catch((error) => { log.warn('[asset-cache] admission summary unavailable', error.message); })
+      .finally(() => { warmingAssetSummary = null; });
+    return warmingAssetSummary;
+  }
+  let bandwidthEmergency = null;
+  function applySettings(next) {
+    lobby.setAiLimit(next.maxAiPerRoom);
+    lobby.setAssetCachePolicy({ required: next.requireAssetCache, getSummary: assetCache.currentSummary });
+    assetCache.setLimits(next.assetCacheLimits ?? fallbackAssetCacheLimits);
+    // A persisted owner setting overrides the startup/env fallback and is applied by the
+    // existing private settings poll; an absent field keeps the normal emergency option.
+    bandwidthEmergency?.setEnabled(next.bandwidthEmergencyEnabled ?? emergencyOptions.enabled);
+    // Runtime enabling fails closed until a summary is ready; ordinary optional startup stays lazy.
+    if (next.requireAssetCache && !assetCache.currentSummary()) void warmAssetSummary();
+  }
+  applySettings(serverSettings.get());
+  if (serverSettings.get().requireAssetCache) await warmAssetSummary();
+  const startedAt = Date.now();
+  // The tag is per process (see buildTag): read the browser runtime once, here, not on every /healthz.
+  resetBuildTag();
+  buildTag();
+
+  const traffic = createTrafficCounter();
   let requestHandler;
   const bandwidthEmergencyEnabled = serverSettings.get().bandwidthEmergencyEnabled ?? emergencyOptions.enabled;
   bandwidthEmergency = createBandwidthEmergencyController({
