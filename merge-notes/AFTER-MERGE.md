@@ -40,9 +40,10 @@ named operator / band / hammer / 黑云 / warden loops stop at the official cap�
 整文件挂起：contentBattle / csp / dsl-data / script-integration（都只报 'test failed'）
 ```
 
-**下一个该看**：`/p/` 的缓存策略 —— `static.js` 里我合并了上游的 `IMMUTABLE_CACHE` / `isNotModified`，
-但 `/p/` 走的分支可能还在用我们旧的 `no-cache`。`isNotModified`/`IMMUTABLE_CACHE` 目前只出现在 import 里
-（各 3 次），**很可能就是没接线**。
+**已检查**：`IMMUTABLE_CACHE` / `isNotModified` **其实接了线**（`static.js:217` / `static.js:256`）。
+`/p/` 的判定是 `cacheControl: same && f.urlHashes.has(hash) ? IMMUTABLE_CACHE : 'no-cache'`（与上游一致），
+所以失败意味着 **`same` 为假**（stat identity 不符）或 **`f.urlHashes` 里没有那个 hash**。
+**下一个该看**：`sameIdentity` / `statIdentity` 的语义，以及插件 registry 里 `urlHashes` 的填充。
 
 
 ## 用「合并前提交」做的对照（决定性）
