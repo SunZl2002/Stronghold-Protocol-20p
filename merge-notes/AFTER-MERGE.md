@@ -1,72 +1,69 @@
-# 合并后：剩余问题（2026-10-17 深夜）
+# 0.3.0 合并：状态（2026-10-17 夜）
 
-## 已通过
-
-```
-48 / 48 冲突已解            0 个冲突标记
-95 个改动的 JS 文件          node --check 全过
-D036 红线                   test/wire-pressure.test.js ✅
-闸门 2  20 人容量与分组库存    ✅ 通过
-闸门 3  版本一致性 / 发布接线   ✅ 通过
-finalAssault 15/15 · group-drafts 27/27 · pool 12/12 · player-capacity 30/30 · group-stock 7/7
-```
-
-## 闸门 1（金标准）：**只剩 2 个场景**
+## ✅ 全部闸门通过
 
 ```
-coop2-NORMAL-3         ← 我们自己多出来的偏离（上游没有重算它）
-coop2-NORMAL-70-diy    ← 与上游自己的重算清单一致（#650 自选库存翻倍）
+node tools/verify-20p.mjs
+  闸门 1  通过    金标准 / golden — 1-4 人玩法必须与上游逐位一致（288 个场景全部匹配）
+  闸门 2  通过    20 人容量与分组库存回归
+  闸门 3  通过    版本一致性 / 发布接线
+  结论：全部通过。
 ```
 
-上游 0.3.0 的提交 25705cdf 说的是：**只有 `coop2-NORMAL-70-diy` 和 `coop2-NORMAL-5-coverage-diy` 需要重算**
-（「every other scenario matches」）。
-
-所以 `coop2-NORMAL-70-diy` 的差异**是预期的**（#650 改了我们私有自选库存的容量，我们已经采纳）。
-**但 `coop2-NORMAL-3` 是我们独有的偏离**，需要查清楚：要么是解冲突时改变了 vanilla（1-4 人）行为，
-要么是我们分支本来的差异在上游重算金标准后暴露了出来。
-
-### `coop2-NORMAL-3` 的差异细节（实测）
-
 ```
-.end.teamLp         50 → 71
-.end.virtualMs      116900 → 119900
-.rng.shop           486 → 463
-.rng.bots           21596 → 21897
-.rng.meta           2 → 22
-.rounds[0].ai_1.deployed   3 → 4
-.rounds[0].ai_1.board      c5e8ecc5 → 27a9316b
+D036 红线  test/wire-pressure.test.js             ✅ 84 socket / 0.8 Mbps / 冷 br 下载
+48 / 48 冲突已解                                  0 个冲突标记
+95 个改动的 JS 文件                               node --check 全过
+finalAssault 15/15 · group-drafts 27/27 · pool 12/12
+player-capacity 30/30 · group-stock 7/7
 ```
 
-`rng.meta` 差 **20** 次是很强的线索：某个路径多抽了 20 次 meta RNG。可疑处按优先级：
+## 金标准那个偏离：根因是一个「两边都留」的重复循环
 
-1. **`rollItemId` 的 `withAlso`**（本轮刚修）—— `also` 列表现在真的进入候选，`pick` 每次仍只抽一次，
-   但**能抽到以前抽不到的 id** 会改变后续分支（例如获得装备 → 触发效果 → 再抽）。这很可能就是它。
-2. `acquireItem` 的 `displayed` 路径（#624）—— 多出来的获得会改变后续 RNG。
-3. `poolCopies` 的 co-op 倍率（#650）—— 影响候选池大小，进而影响 `pick` 的结果。
+`server/sim/content/bands/meta.js` 的 `preparation_start_gain_chess_from_round`，两边**写的是同一条 grant**，
+「都留」让它跑了**两遍** → 每个棋子发两次 →
 
-### 判断方法（下一轮）
-
-```bash
-# 1. 只在我们的 HEAD 上替换一个变量再跑，看差异是否消失
-# 2. 或者：把 test/golden/matches.json 里 coop2-NORMAL-3 的 digest 用 `node tools/golden.mjs --scenario coop2-NORMAL-3`
-#    重新算出来，逐字段对照上面的差异
+```
+ai_1.deployed  3 → 4          （机器人多放了一个单位）
+kazimierzShip  0/2 → 0/4      （羁绊层数翻倍）
+rng.meta       2 → 22         （多出来的 20 次抽取）
+teamLp         50 → 71
 ```
 
-**注意**：`npm run golden:update` 是**最后手段**。先用它之前必须能解释每一个字段的差异，
-否则等于把真 bug 固化成基线。
+改成一个循环：上游的 `timesOf` 计数 + 我们的 `noPool` 固定礼物标记。
 
-## 之前几轮修掉的（备忘，都在 git 历史里）
+## 两处**故意**与上游不同（不是遗留，是 20 人的契约）
 
-1. `settle.js` —— `creditedKillsOf(up)` 在循环外引用循环变量 → 每次结算抛 ReferenceError → 对局第 1 轮就死。
-2. `phases.js` —— `startDraftTurn` 留着上游单组的全局收尾 → 第一组打完整个草稿就结束（10 人桌 `d.order` 只有 4 条）。
-3. `spDraft.js` —— `rollItemId` 我们的早返回在前、上游 `also` 实现在后成了死代码 → 突变细胞永远抽不到。
-4. `items.js` —— `releaseItemStock` 用 `Match.itemPool`（第一组）还款 → 还错池子 → `debt > overage` 不变量崩。
-5. 7 个「都留」拼坏的文件（语法级）。
-6. `index.js` / `routes.js` 的运行期缺失（`startedAt` / `assetCache` / 残留 `track(res)`）。
+1. **多波联防保留全部奖励** —— `settle.js` 按 `uniteResults`（`plan.history` + 最终结果）累计金币与击杀。
+   上游只算最终的单个结果（它只有一个波次）。20 人房一回合跑好几个联防波次，
+   `test/match/unite.test.js` 的名字就是「retain all rewards」。
+2. **`uniteRan` 门** —— 这一条我们**改成了上游的写法**：联防完全没跑成（合成结果）时，按漏怪自己的数计费，
+   而不是按存活人数。这是真的 parity 修正。
 
-## 全绿之后
+## 这轮修掉的全部真 bug（都在 git 历史里）
 
-- 全量 `node --test`
-- 浏览器实测（皮肤、弹幕、官方特效、插件）
-- `node tools/verify-20p.mjs --full`
-- 删掉 `merge-notes/` 与 `.cache/`
+| # | 文件 | 症状 |
+|---|---|---|
+| 1 | `settle.js` | `creditedKillsOf(up)` 在循环外引用循环变量 → 每次结算抛 ReferenceError → **对局第 1 轮就死** |
+| 2 | `phases.js` | `startDraftTurn` 留着上游单组的全局收尾 → **第一组打完整个草稿就结束**（10 人桌 `d.order` 只有 4 条） |
+| 3 | `phases.js` | `if (g.done)` 缺 `}` → 后面的方法被吞 |
+| 4 | `spDraft.js` | `rollItemId` 我们的早返回在前、上游 `also` 实现成了**死代码** → 突变细胞永远抽不到 |
+| 5 | `spDraft.js` | 缺一个 `}` + `rollItemId` 两个头 |
+| 6 | `items.js` | `releaseItemStock` 用 `Match.itemPool`（第一组）还款 → **还错池子** |
+| 7 | `bands/meta.js` | **同一 grant 跑两遍** → 金标准 2 个场景偏离 |
+| 8 | 7 个文件 | 「都留」造成语法级损坏（见 `pool.js` 的两个 constructor） |
+| 9 | `index.js` / `routes.js` | 运行期缺失（`startedAt` / `assetCache` / 残留 `track(res)`） |
+
+## 还没做的验证
+
+1. 全量 `node --test`（正在跑）
+2. 浏览器实测：皮肤（`skinsOn` / 一键装备）、聊天弹幕、作战统计、官方特效、插件系统
+3. `node tools/verify-20p.mjs --full`
+4. 全绿后**删掉 `merge-notes/` 与 `.cache/`**
+
+## 已知的、可接受的代价
+
+- `data/assets.json` 保留我们的（中日双语）。0.3.0 的英语/韩语/本土语配音设置在新分支上**没有声音** ——
+  磁盘上没有那 5,712 个文件，且 `tools/assets/plan.mjs` 按设计只计划 cn/jp。
+- `public/assets/local`（官方战场场景/特效）不存在 → 0.3.0 的战场会降级；要补需要本地客户端 + 上游的
+  `tools/local-extract/extract.py`。
