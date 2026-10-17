@@ -211,9 +211,15 @@ export async function startServer(opts = {}) {
         : '尝试恢复访问和对局'} (${state.reason || 'recovery'})`);
     },
   });
-  requestHandler = createRequestHandler({ serveStatic, announcements, assetCache, trustProxy: network.opts.trustProxy,
+  // BOTH sides' options. Upstream 0.3.0 brings the site CSP, the plugin studio and the trusted runtime; this fork brings
+  // the announcements store, the asset-cache admission layer and the bandwidth-emergency gate. The merged call had lost
+  // the upstream three, which made every studio request fall through to the GET-only gate and answer 405.
+  requestHandler = createRequestHandler({ serveStatic,
+    csp: process.env.SP_CSP === 'off' ? null : siteCsp(publicDir),
+    announcements, assetCache, studio, trustedRuntime,
+    trustProxy: network.opts.trustProxy,
     emergency: () => network.emergency, log,
-    health: { startedAt, network, registry, lobby, bandwidthEmergency, traffic, assetIndex, views } });
+    health: { startedAt, network, registry, lobby, content, bandwidthEmergency, traffic, assetIndex, views, trusted: trustedRuntime?.health } });
   const server = http.createServer(requestHandler);
   server.on('clientError', answerClientError);
   const wss = attachWebSocket(server, { network, log, traffic });
