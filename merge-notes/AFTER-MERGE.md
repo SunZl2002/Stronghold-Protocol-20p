@@ -1,4 +1,4 @@
-# 0.3.0 合并：状态（2026-10-17 深夜，第二轮）
+# 0.3.0 合并：状态（2026-10-18 凌晨）
 
 ## ✅ 三道闸门全绿（不变）
 
@@ -7,6 +7,43 @@
 闸门 2  通过    20 人容量与分组库存
 闸门 3  通过    版本一致性 / 发布接线
 ```
+
+## 全量测试的分目录快照
+
+| 目录 | 结果 | 备注 |
+|---|---|---|
+| `test/content` | **2346 / 0** | ✅ |
+| `test/sim` | **923 / 0** | ✅ |
+| `test/render` | **875 / 0** | ✅ |
+| `test/match` | 1097 / 13 | 见下 |
+| `test/studio` | **83 / 6** | 从 52/37 修上来的（`index.js` 漏传 `studio`）|
+| `test/plugins` | 267 / 9 | 见下 |
+
+### 已修：`index.js` 漏传三个上游选项（studio 37 个失败的根因）
+
+`createRequestHandler` 的合并版只留了我们的选项，**丢了上游的 `csp` / `studio` / `trustedRuntime`**。
+没有 `studio`，请求永远不会被 studio 认领，落到 GET/HEAD 闸门 → **405**，
+而测试期望 404/400。**`test/studio` 52/37 → 83/6。**
+
+### 已修：三处 `while` 缺 `// loop-cap:` 注释
+
+0.3.0 新增的约定（有测试）。我们的 `phases.js` / `spDraft.js` / `unite.js` 各有一处。
+
+### 剩余：`test/plugins` 9 个
+
+```
+GET /p/ 的缓存头：actual 'no-cache'，expected 'public, max-age=31536000, immutable'
+GET /p/: 扫描后放进去的符号链接不应被跟随
+a plugins folder spelled in another case than on disk still serves its files
+a plugin message agrees with the schema（actual false, expected true）
+named operator / band / hammer / 黑云 / warden loops stop at the official cap（还要补 loop-cap）
+整文件挂起：contentBattle / csp / dsl-data / script-integration（都只报 'test failed'）
+```
+
+**下一个该看**：`/p/` 的缓存策略 —— `static.js` 里我合并了上游的 `IMMUTABLE_CACHE` / `isNotModified`，
+但 `/p/` 走的分支可能还在用我们旧的 `no-cache`。`isNotModified`/`IMMUTABLE_CACHE` 目前只出现在 import 里
+（各 3 次），**很可能就是没接线**。
+
 
 ## 用「合并前提交」做的对照（决定性）
 
