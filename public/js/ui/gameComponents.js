@@ -9,7 +9,7 @@ import { t as tr } from '../../../shared/i18n.js';
 import {
   uiUrl, chessAvatarUrl, chessPortraitUrl, chessSkinAvatarUrl, itemIconUrl, tokenAvatarUrl, enemyIconUrl, bondIconUrl, bandIconUrl,
 } from './assetUrls.js';
-import { useSkin } from './skins.js';
+import { useSkin } from './skinChoice.js';
 
 const cx = (...p) => p.flat().filter(Boolean).join(' ');
 

@@ -13,7 +13,7 @@ import { useMemo, useState } from '../../vendor/hooks.module.js';
 import { html, TierChip, Icon } from '../ui/components.js';
 import { Img } from '../ui/gameComponents.js';
 import { chessAvatarUrl, chessSkinAvatarUrl } from '../ui/assetUrls.js';
-import { useSkin } from '../ui/skins.js';
+import { useSkin } from '../ui/skinChoice.js';
 import { data } from '../data.js';
 import { PROF_NAME } from '../ui/loadoutModel.js';
 import { ownershipRoster, rosterByTier, isOwned, standInSummary } from '../ui/ownershipModel.js';

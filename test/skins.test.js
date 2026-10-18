@@ -1,367 +1,452 @@
-// 皮肤系统专项自动化测试 (docs/SKINS.md & SKINS-BUILTIN-PLAN.md)
-import { test } from 'node:test';
+// 干员皮肤 (docs/SKINS.md) — the whole path, in one file: the `room.skins` wire shape, the lobby → Match → PlayerState
+// chain, what the renderer resolves, and the client's picker rules.
+//
+// The things this suite exists to pin, because each of them is silent when it breaks:
+//   * the KEY IS AN OPERATOR (charId), not a chess id and not a base id. `chars[<charId>].skins` is where the composed
+//     asset manifest groups them (docs/PLUGINS.md §9), so a selection keyed any other way resolves to nothing and the
+//     whole feature draws the default model while every test that only checks "the field is on the wire" still passes.
+//   * the skinId is NOT an `isId`: an official key carries `@` and `#` (`char_002_amiya@winter#1`), so the generic id
+//     validator would refuse every real one.
+//   * the choice is PUBLIC: it travels in `m.public` for teammates, and only the lobby seat that sent it changes.
+//   * the OWN pieces draw it BEFORE the first battle: the own prep board / hand / 临时整备区 read `piece.skin` (render/app.js
+//     pieceInfo) and rebuild a piece whose appearance changed. The renderer itself needs a canvas and a GPU (the browser
+//     suites), so that rule is pinned on its source, the way test/ui/standin-ui.test.js and test/ui/diy-ui.test.js pin
+//     pieceInfo's other reads — a regression there is silent: the board simply draws the default model.
+//   * the client never sends more than the wire accepts (SKIN_LIMITS.entries): the server refuses an over-long selection
+//     as a WHOLE (BAD_MSG), so the cap is applied where the selection is read, not where it is shown.
+
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isSkinId, isCharId, isSkinSelection, checkSkinSelection, operatorCharIds, validateC2S, SKIN_LIMITS } from '../shared/protocol.js';
+import { makeMatch, DATA } from './match/harness.js';
+import { Battle } from '../server/sim/Battle.js';
+import { makeBattle } from './helpers/battleHarness.js';
+import { avatarUrl, portraitUrl, illustUrl, spineEntry, hasBackSpine, unitPictureUrl, skinsOf, skinHasModel } from '../public/js/assets.js';
+import { createStore } from '../public/js/store.js';
+import { parseStoredSkins, SKINS_KEY, SKINS_SYNC_KEY } from '../public/js/ui/skins.js';
+import { installSkinsSync } from '../public/js/ui/loadoutSync.js';
 
-import { isSkinId, isSkinSelection } from '../shared/protocol.js';
-import { mergeSkins, sanitizeSkins, exportPayload, parseImport } from '../public/js/ui/loadoutModel.js';
-import { avatarUrl, spineEntry, hasBackSpine } from '../public/js/assets.js';
-import { defaultSkins } from '../public/js/ui/skins.js';
-import { chessSkinPortraitUrl } from '../public/js/ui/assetUrls.js';
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const skinsData = JSON.parse(readFileSync(join(ROOT, 'data/skins.json'), 'utf8'));
-const assetsData = JSON.parse(readFileSync(join(ROOT, 'data/assets.json'), 'utf8'));
-const chessData = JSON.parse(readFileSync(join(ROOT, 'data/chess.json'), 'utf8'));
+/** A real operator of the mode's roster, and one of its official skin keys. */
+const OPERATOR = 'char_498_inside';
+const OTHER = 'char_003_kalts';
+const SKIN = 'char_498_inside@kitchen#2';
+const SKIN_OTHER = 'char_003_kalts@boc#6';
 
-test('全量 174 套皮肤内置元数据覆盖与映射正确', () => {
-  const chars = skinsData.chars || {};
-  const charKeys = Object.keys(chars);
-  assert.equal(charKeys.length, 115, '拥有皮肤的干员数为 115 名');
-
-  let totalSkins = 0;
-  for (const [charId, list] of Object.entries(chars)) {
-    assert.ok(Array.isArray(list) && list.length > 0, `${charId} 拥有皮肤列表`);
-    for (const s of list) {
-      totalSkins++;
-      assert.ok(isSkinId(s.id), `皮肤 id ${s.id} 满足命名协议规范`);
-      assert.ok(typeof s.name === 'string' && s.name.length > 0, `皮肤 ${s.id} 具有名称`);
-    }
-  }
-  assert.equal(totalSkins, 174, '总皮肤数应精准为 174 款');
-
-  // 验证普查出的 6 名无皮肤干员
-  const noSkinChars = [
-    'char_512_aprot', // 盟约·辅助干员
-    'char_1037_sora2', // 雪猎
-    'char_4139_cathy', // 凯瑟琳
-    'char_1039_titi',  // 缇缇
-    'char_1041_silar2', // 凛御银灰
-    'char_1042_astgn2', // 溯光星源
-  ];
-  for (const id of noSkinChars) {
-    assert.equal(chars[id], undefined, `未实装皮肤干员 ${id} 不应存在于 skins.json`);
-  }
-});
-
-test('导入语义增量覆盖 (mergeSkins) 行为正确', () => {
-  const current = {
-    chess_silverash: 'skin_silverash_1',
-    chess_thorns: 'skin_thorns_1',
-    chess_eyja: 'skin_eyja_1',
-  };
-
-  // 导入仅包含棘刺新皮与塞雷娅皮肤，银灰未提及
-  const imported = {
-    chess_thorns: 'skin_thorns_summer',
-    chess_saria: 'skin_saria_prison',
-  };
-
-  const result = mergeSkins(current, imported);
-
-  // 1. 银灰未提及，保留原选择
-  assert.equal(result.chess_silverash, 'skin_silverash_1');
-  // 2. 棘刺已提及，增量打补丁
-  assert.equal(result.chess_thorns, 'skin_thorns_summer');
-  // 3. 塞雷娅新增
-  assert.equal(result.chess_saria, 'skin_saria_prison');
-  // 4. 艾雅法拉未提及，保留原选择
-  assert.equal(result.chess_eyja, 'skin_eyja_1');
-});
-
-test('导出与导入链路支持 skins 字段且安全隔离', () => {
-  const loadout = { chess_char_1_01_a: { skill: 1 } };
-  const skins = { chess_char_1_01_a: 'char_002_amiye@epoque#4' };
-
-  const payload = exportPayload(loadout, { skins });
-  assert.ok(payload.skins);
-  assert.equal(payload.skins.chess_char_1_01_a, 'char_002_amiye@epoque#4');
-
-  const parsed = parseImport(JSON.stringify(payload));
-  assert.ok(parsed.ok);
-  assert.deepEqual(parsed.entries, loadout);
-  assert.deepEqual(parsed.skins, skins);
-});
-
-test('Spine 与 Avatar 资源回退：皮肤缺损优雅 fallback 至原皮', () => {
-  const manifest = {
-    chars: {
-      char_demo: {
-        avatar: 'art/demo.png',
-        spine: { front: { skel: '/art/demo.skel', atlas: '/art/demo.atlas', anims: {} } },
-        skins: {
-          skin_has_art: {
-            avatar: 'art/skin_demo.png',
-            spine: { front: { skel: '/art/skin.skel', atlas: '/art/skin.atlas', anims: {} } },
-          },
-          skin_no_spine: {
-            avatar: 'art/skin_no_spine.png',
-          },
-          skin_broken_spine: {
-            avatar: 'art/skin_broken.png',
-            spine: { front: { skel: 'https://remote.url/broken.skel' } },
+/** A composed manifest as the browser sees one: the installation's art with one cosmetic plugin's skins laid over it. */
+const MANIFEST = {
+  chars: {
+    [OPERATOR]: {
+      avatar: '/a/inside.png', avatarE2: '/a/inside_2.png', portrait: '/p/inside_1.png', portraitE2: '/p/inside_2.png',
+      illust: '/i/inside.png',
+      spine: { front: { skel: '/s/inside/front.skel', atlas: '/s/inside/front.atlas', textures: ['/s/inside/front.png'], anims: { idle: 'Idle' } } },
+      skins: {
+        [SKIN]: {
+          name: '厨房', group: '罗德厨房',
+          avatar: '/a/inside_kitchen.png', portrait: '/p/inside_kitchen_1.png', illust: '/i/inside_kitchen.png',
+          spine: {
+            front: { skel: '/s/inside_kitchen/front.skel', atlas: '/s/inside_kitchen/front.atlas', textures: ['/s/inside_kitchen/front.png'], anims: { idle: 'Idle' } },
+            back: { skel: '/s/inside_kitchen/back.skel', atlas: '/s/inside_kitchen/back.atlas', textures: ['/s/inside_kitchen/back.png'], anims: { idle: 'Idle' } },
           },
         },
+        // a skin the plugin gives art to, with no model: shown nowhere, offered nowhere
+        'char_498_inside@art#9': { name: '只有画', group: '', avatar: '/a/only_art.png' },
       },
     },
-  };
+    // an operator whose plugin writes a skin for another operator's key plus a plain `illust` and nothing else
+    [OTHER]: { avatar: '/a/kalts.png', portrait: '/p/kalts_1.png', illust: '/i/kalts.png' },
+  },
+};
 
-  // 1. 有独立皮肤模型与头像
-  assert.equal(avatarUrl(manifest, 'char_demo', { skin: 'skin_has_art' }), 'art/skin_demo.png');
-  assert.equal(spineEntry(manifest, 'char_demo', { skin: 'skin_has_art' })?.skel, '/art/skin.skel');
-
-  // 2. 皮肤无独立 spine，回退至原皮 spine
-  assert.equal(avatarUrl(manifest, 'char_demo', { skin: 'skin_no_spine' }), 'art/skin_no_spine.png');
-  assert.equal(spineEntry(manifest, 'char_demo', { skin: 'skin_no_spine' })?.skel, '/art/demo.skel');
-
-  // 3. 皮肤 spine 格式非法或损坏，优雅 fallback 回退至原皮 spine
-  assert.equal(avatarUrl(manifest, 'char_demo', { skin: 'skin_broken_spine' }), 'art/skin_broken.png');
-  assert.equal(spineEntry(manifest, 'char_demo', { skin: 'skin_broken_spine' })?.skel, '/art/demo.skel');
-
-  // 4. 皮肤 id 完全不存在，回退至原皮头像与 spine
-  assert.equal(avatarUrl(manifest, 'char_demo', { skin: 'skin_not_exist' }), 'art/demo.png');
-  assert.equal(spineEntry(manifest, 'char_demo', { skin: 'skin_not_exist' })?.skel, '/art/demo.skel');
-});
-
-test('协议层 isSkinId 与 isSkinSelection 防御校验', () => {
-  assert.equal(isSkinId('char_002_amiye@epoque#4'), true);
-  assert.equal(isSkinId('char_102_texas@summer#1'), true);
-  assert.equal(isSkinId('invalid space id'), false);
-  assert.equal(isSkinId(''), false);
-  assert.equal(isSkinId(null), false);
-
-  assert.equal(isSkinSelection({ chess_amiye: 'char_002_amiye@epoque#4' }), true);
-  assert.equal(isSkinSelection({ 'invalid space chess': 'char_002_amiye@epoque#4' }), false);
-  assert.equal(isSkinSelection({ chess_amiye: 'invalid space skin' }), false);
-  assert.equal(isSkinSelection([]), false);
-  assert.equal(isSkinSelection('not obj'), false);
-});
-
-/**
- * The 20-player broadcast contract for skins (docs/SKINS.md): the choice is PUBLIC, so it rides in
- * m.public.players[].skins — which means it must survive the compact v1 codec, and must cost a player who wears no
- * skin exactly nothing. Both are load-bearing at 20 seats / 8 Hz, so they are pinned here rather than left implicit.
- */
-test('20 席 m.public 的皮肤载荷：紧凑编解码往返一致，且无皮肤玩家零成本', async () => {
-  const { encodeWire, decodeWire } = await import('../shared/wireCodec.js');
-  const skinOf = (i) => `char_${100 + i}_op@summer#${i % 9}`;
-  const seat = (i, withSkin) => ({
-    playerId: `p_${i}`, seat: i, name: `博士${i}`, isBot: false, connected: true, alive: true, lp: 30 - i,
-    bandId: null, shopLevel: 3, boardCount: 6, ready: true, bonds: [], fieldId: i, status: null, autoplay: false,
-    ...(withSkin ? { skins: { [`chess_char_1_0${(i % 9) + 1}_a`]: skinOf(i) } } : {}),
+describe('皮肤: the wire shape of room.skins', () => {
+  test('isSkinId accepts the keys the official skin table produces (NOT isId: they carry @ and #)', () => {
+    for (const id of [SKIN, 'char_002_amiya@winter#1', 'char_002_amiya#1+', 'char_1039_thorn2@marthe#9']) {
+      assert.ok(isSkinId(id), `should accept ${id}`);
+    }
+    for (const bad of ['', ' ', 'a b', 'char/1', 'char\\1', '<script>', 'x'.repeat(SKIN_LIMITS.idLen + 1), 42, null, undefined, {}, []]) {
+      assert.ok(!isSkinId(bad), `should reject ${JSON.stringify(bad)}`);
+    }
   });
-  const frame = (withSkin) => ({ t: 'm.public', phase: 'PREP', round: 5, players: Array.from({ length: 20 }, (_, i) => seat(i, withSkin)) });
-  const size = (o) => Buffer.byteLength(JSON.stringify(encodeWire(o, 's2c')));
 
-  // the choice and its chess key survive the round trip for all 20 seats
-  const back = decodeWire(encodeWire(frame(true), 's2c'), 's2c');
-  assert.equal(back.players.length, 20);
-  for (const [i, p] of back.players.entries()) {
-    const keys = Object.keys(p.skins || {});
-    assert.equal(keys.length, 1, `seat ${i} keeps exactly its own entry`);
-    assert.match(keys[0], /^chess_char_/, 'the key stays a CHESS id (the catalogue is keyed by operator id)');
-    assert.equal(p.skins[keys[0]], skinOf(i));
-  }
-
-  // a room where nobody wears a skin is byte-identical to one built without the field at all
-  const plain = decodeWire(encodeWire(frame(false), 's2c'), 's2c');
-  assert.ok(plain.players.every((p) => !Object.prototype.hasOwnProperty.call(p, 'skins')),
-    'no seat carries an empty skins object');
-  assert.equal(size(frame(false)), size({ t: 'm.public', phase: 'PREP', round: 5, players: frame(false).players.map(({ skins, ...rest }) => rest) }));
-
-  // what 20 skinned seats cost on the wire (kept as a number so a regression that bloats the payload is visible)
-  const extra = size(frame(true)) - size(frame(false));
-  assert.ok(extra > 0 && extra < 3000, `20 seats add ${extra} B per broadcast (expected under 3 KB)`);
-});
-
-/**
- * A board piece's skin has to survive the trip into the battle simulation, because that is the model the battlefield
- * draws. The chain is: MatchPlayer.battleInput sets `skin` on the plain input -> battle/players.js
- * _createAllyFromInput -> _makeAlly({ skin }) -> sim/units.js Unit({ skin }) -> snapshot.js unitInfo publishes it.
- *
- * This test exists because the port originally missed the two middle links: `skin` was set on the input object but
- * _makeAlly never forwarded it and Unit had no such field, so the field was silently dropped on every deployment
- * (the prep view still looked right, which is exactly what made it hard to notice).
- */
-test('战场单位：干员的皮肤必须穿过模拟层到达 unitInfo（曾经在此静默丢失）', async () => {
-  const { makeBattle, chessRec } = await import('../test/helpers/battleHarness.js');
-  const { unitInfo } = await import('../server/sim/snapshot.js');
-  const guard = (o = {}) => chessRec({ id: o.id, profession: 'WARRIOR', stats: { atk: 300, blockCnt: 2 }, ...o });
-  const SKIN = 'char_199_yak@summer#1';
-
-  const h = makeBattle({
-    defs: { chess: { a: guard({ id: 'a' }), b: guard({ id: 'b' }) } },
-    units: [{ chessId: 'a', row: 9, col: 5, skin: SKIN }, { chessId: 'b', row: 12, col: 7 }],
-    content: 'none',
+  test('isCharId is an operator, never a chess id', () => {
+    for (const id of [OPERATOR, OTHER, 'char_002_amiya', 'char_1012_skadi2', 'char_4145_ulpia', 'char_616_pithst', 'char_x_mod_rose']) {
+      assert.ok(isCharId(id), id);
+    }
+    for (const bad of ['chess_char_1_01_a', 'char_498_inside@kitchen#2', 'token_10006_vodfox_doll', '', 'char_', 'char_x_', '__proto__']) {
+      assert.ok(!isCharId(bad), JSON.stringify(bad));
+    }
+    const ids = operatorCharIds(DATA);
+    assert.ok(ids.has(OPERATOR) && ids.has(OTHER));
+    assert.ok(!ids.has('chess_char_1_01_a'));
+    assert.ok(ids.size <= SKIN_LIMITS.entries, `vanilla roster ${ids.size} fits the wire cap`);
   });
-  h.step();
 
-  const a = h.battle.units.find((u) => u.defId === 'a');
-  const b = h.battle.units.find((u) => u.defId === 'b');
+  test('isSkinSelection: a plain map of ≤ SKIN_LIMITS.entries charIds → skinIds, and nothing else', () => {
+    assert.equal(SKIN_LIMITS.entries, 256);
+    assert.ok(isSkinSelection({ [OPERATOR]: SKIN }));
+    assert.ok(isSkinSelection({ char_x_mod_rose: SKIN }), 'a plugin operator is a charId');
+    assert.ok(isSkinSelection({}), 'an empty selection clears every skin');
+    assert.ok(!isSkinSelection(null));
+    assert.ok(!isSkinSelection([]));
+    assert.ok(!isSkinSelection([SKIN]), 'not a list');
+    assert.ok(!isSkinSelection(Object.create(null)), 'a null-prototype object is not a plain map');
+    assert.ok(!isSkinSelection({ [OPERATOR]: '' }));
+    assert.ok(!isSkinSelection({ [OPERATOR]: 'bad id' }));
+    assert.ok(!isSkinSelection({ [OPERATOR]: 42 }));
+    assert.ok(!isSkinSelection({ 'char 1': SKIN }));
+    assert.ok(!isSkinSelection({ chess_char_1_01_a: SKIN }), 'a chess id is not a charId');
+    assert.ok(!isSkinSelection({ [OPERATOR]: SKIN, chess_char_1_01_a: SKIN }), 'one bad key refuses the whole map');
+    const big = {};
+    for (let i = 0; i <= SKIN_LIMITS.entries; i++) big[`char_${i}_x`] = SKIN;
+    assert.ok(!isSkinSelection(big), `more than ${SKIN_LIMITS.entries} entries`);
+    const capped = {};
+    for (let i = 0; i < SKIN_LIMITS.entries; i++) capped[`char_${i}_x`] = SKIN;
+    assert.ok(isSkinSelection(capped), 'the cap itself is still a selection');
+  });
 
-  // the two links the port missed first time round
-  assert.equal(a?.skin, SKIN, 'sim/units.js Unit keeps the skin');
-  assert.equal(b?.skin, null, 'a unit without a skin holds null, not undefined');
-
-  // what the renderer reads
-  const va = unitInfo(a), vb = unitInfo(b);
-  assert.equal(va.skin, SKIN, 'unitInfo publishes it');
-  assert.equal(vb.skin, undefined, 'undefined (not null) so JSON.stringify drops it');
-  assert.ok(JSON.stringify(va).includes(`"skin":"${SKIN}"`), 'it reaches the wire');
-  assert.ok(!JSON.stringify(vb).includes('"skin"'), 'a skinless unit costs the broadcast nothing');
+  test('validateC2S: room.skins needs a selection, and room.skin.install does not exist', () => {
+    assert.equal(validateC2S({ t: 'room.skins', skins: { [OPERATOR]: SKIN } }), null);
+    assert.equal(validateC2S({ t: 'room.skins', skins: {} }), null);
+    assert.ok(validateC2S({ t: 'room.skins' }), 'missing field');
+    assert.ok(validateC2S({ t: 'room.skins', skins: SKIN }), 'not a map');
+    assert.ok(validateC2S({ t: 'room.skins', skins: { [OPERATOR]: 'has space' } }), 'bad skin id');
+    assert.ok(validateC2S({ t: 'room.skins', skins: { chess_char_1_01_a: SKIN } }), 'a chess id is not a charId');
+    assert.ok(validateC2S({ t: 'room.skins', skins: [] }), 'not a plain object');
+    // the install channel is NOT ported: an unauthenticated "make the server download and rewrite shared data" message
+    // is exactly what upstream closed (#652)
+    assert.ok(validateC2S({ t: 'room.skin.install', skinId: SKIN }), 'the installer message must not be routable');
+  });
 });
 
-/**
- * D037 默认皮肤 (the owner's request of 2026-10-14): every operator whose skin has an installed model wears it, so a
- * fresh browser is dressed instead of plain. The rules that matter, all checkable against the committed data without a
- * browser:
- *
- *   * keyed by CHESS id (a choice is per chess; the catalogue is per operator) and never on a golden / hidden / 自选
- *     record — the same gate the loadout uses;
- *   * only a skin whose Spine model is actually in the manifest, so a dressed operator is never one that would fall
- *     back to its own model (the three source-missing skins);
- *   * an operator with no installed skin is absent, not mapped to nothing.
- */
-test('D037 默认皮肤：每个有模型的干员都装上一款，且只装在能穿皮肤的棋子上', () => {
-  // a store over the committed data, exercising the real shapes (chess / skins catalogue / manifest)
-  const store = {
-    get: (n) => (n === 'skins' ? skinsData : n === 'assets' ? assetsData : null),
-    list: (n) => (n === 'chess' ? Object.values(chessData) : []),
-  };
-  const map = defaultSkins(store);
-  const entries = Object.entries(map);
-  assert.ok(entries.length > 0, 'the defaults are not empty against the committed data');
+describe('皮肤: the lobby seat and the match', () => {
+  const seats = [
+    { seat: 0, playerId: 'p_0', name: 'P0', isBot: false, connected: true, skins: { [OPERATOR]: SKIN } },
+    { seat: 1, playerId: 'ai_0', name: 'AI0', isBot: true, connected: true, skins: { [OPERATOR]: SKIN } },
+  ];
 
-  // every chess in the map may wear a skin at all
-  for (const [chessId, skinId] of entries) {
-    const c = chessData[chessId];
-    assert.ok(c, `${chessId} is a real chess`);
-    assert.ok(!c.isGolden, `${chessId} is not the golden form`);
-    assert.ok(!c.isHidden, `${chessId} is not hidden`);
-    assert.ok(!c.isDiy, `${chessId} is not a 自选 slot`);
-    // and the skin is one of that operator's, with SOME art installed (a model, or at least a portrait — see below)
-    const picked = assetsData.chars[c.charId]?.skins?.[skinId];
-    assert.ok(picked, `${skinId} is installed for ${c.charId}`);
-    assert.ok(picked.spine || picked.portrait || picked.avatar, `${skinId} has art on this server`);
-  }
+  test('the seat carries the selection into PlayerState; a bot is refused whatever its seat says', () => {
+    const h = makeMatch({ mode: 'coop', seats });
+    assert.deepEqual(h.ps('p_0').skins, { [OPERATOR]: SKIN });
+    assert.deepEqual(h.ps('ai_0').skins, {}, 'setSkins refuses bots');
+  });
 
-  // every operator that HAS an installed skin is dressed (no gaps). "Installed" means any art at all, not only a Spine
-  // model: 浊心斯卡蒂's two skins ship portraits but no model upstream, and skipping her left a visible operator on its
-  // own art while the picker offered skins that would have shown.
-  const dressedChars = new Set(entries.map(([chessId]) => chessData[chessId].charId));
-  const hasArt = (rec) => Object.values(rec.skins || {}).some((s) => s.spine || s.portrait || s.avatar);
-  const withInstalled = Object.entries(assetsData.chars).filter(([, rec]) => hasArt(rec)).map(([charId]) => charId);
-  assert.ok(withInstalled.length >= 115, `the committed manifest covers ${withInstalled.length} operators`);
-  for (const charId of withInstalled) {
-    // an operator may have no eligible chess (all golden / hidden); only require it when one exists
-    const eligible = Object.values(chessData).some((c) => c.charId === charId && !c.isGolden && !c.isHidden && !c.isDiy);
-    if (eligible) assert.ok(dressedChars.has(charId), `${charId} is dressed`);
-  }
+  test('Match.setSkins: only the caller\'s own seat, any phase, and the public view carries it', () => {
+    const h = makeMatch({ mode: 'coop', seats });
+    const before = { [OPERATOR]: SKIN };
+    assert.deepEqual(h.ps('p_0').skins, before);
+    // a chess id, a bad skin id, a non-plain object and a map over the cap each refuse the WHOLE selection
+    assert.equal(h.m.setSkins('p_0', { [OPERATOR]: SKIN, chess_char_1_01_a: SKIN }).error, 'BAD_MSG');
+    assert.equal(h.m.setSkins('p_0', { [OPERATOR]: 'has space' }).error, 'BAD_MSG');
+    assert.equal(h.m.setSkins('p_0', { [OPERATOR]: '' }).error, 'BAD_MSG');
+    assert.equal(h.m.setSkins('p_0', []).error, 'BAD_MSG');
+    assert.equal(h.m.setSkins('p_0', Object.create(null)).error, 'BAD_MSG');
+    const big = {};
+    for (let i = 0; i <= SKIN_LIMITS.entries; i++) big[`char_${i}_x`] = SKIN;
+    assert.equal(h.m.setSkins('p_0', big).error, 'BAD_MSG');
+    assert.deepEqual(h.ps('p_0').skins, before, 'a refusal leaves the stored choice');
+    // an operator the room does not have is dropped; the rest is kept
+    assert.equal(h.m.setSkins('p_0', { [OPERATOR]: SKIN, char_999_nope: SKIN }).ok, true);
+    assert.deepEqual(h.ps('p_0').skins, { [OPERATOR]: SKIN });
+    assert.equal(checkSkinSelection({ [OPERATOR]: SKIN, char_999_nope: SKIN }, (id) => operatorCharIds(DATA).has(id)).dropped, 1);
+    assert.equal(spineEntry(MANIFEST, OPERATOR, { skin: 'chess_char_1_01_a' }).skel, '/s/inside/front.skel',
+      'a key the manifest does not hold resolves to nothing: the operator\'s own model');
+    assert.equal(h.m.setSkins('ai_0', { [OPERATOR]: SKIN }).error, 'NOT_IN_ROOM', 'a bot has no seat to change');
+    assert.equal(h.m.setSkins('nobody', { [OPERATOR]: SKIN }).error, 'NOT_IN_ROOM');
+    const me = h.m.publicView().players.find((p) => p.playerId === 'p_0');
+    assert.deepEqual(me.skins, { [OPERATOR]: SKIN });
+    const bot = h.m.publicView().players.find((p) => p.playerId === 'ai_0');
+    assert.equal(bot.skins, undefined, 'omitted when empty, so a vanilla payload is byte-identical');
+    assert.equal(h.m.setSkins('p_0', {}).ok, true, 'clearing is a valid selection');
+    assert.equal(h.m.publicView().players.find((p) => p.playerId === 'p_0').skins, undefined);
+  });
 
-  // an operator with no installed art is absent
-  const none = Object.entries(assetsData.chars).find(([, rec]) => !hasArt(rec));
-  if (none) {
-    const [charId] = none;
-    assert.ok(!dressedChars.has(charId), `${charId} has no installed skin and stays plain`);
-  }
+  test('a mid-match change is marked public (a teammate sees it on the next m.public)', () => {
+    const h = makeMatch({ mode: 'coop', seats });
+    h.start();
+    let publicMarked = 0;
+    const prev = h.m.markPublic;
+    h.m.markPublic = () => { publicMarked++; return prev.call(h.m); };
+    assert.equal(h.m.setSkins('p_0', { [OPERATOR]: SKIN }).ok, true);
+    assert.equal(publicMarked, 1);
+    assert.deepEqual(h.m.publicView().players.find((p) => p.playerId === 'p_0').skins, { [OPERATOR]: SKIN });
+  });
 
-  // The default picks a model when one exists, and otherwise the best art there is — never a skin with no art at all,
-  // because that would change nothing visible. Checked against whatever the committed manifest says rather than a
-  // frozen list: the source gains files over time (char_4087_ines@boc#8 arrived after a later retry).
-  for (const [chessId, skinId] of entries) {
-    const charId = chessData[chessId].charId;
-    const s = assetsData.chars[charId].skins[skinId];
-    assert.ok(s && (s.spine || s.portrait || s.avatar), `${skinId} is a default only because it has some art`);
-    if (!s.spine) assert.ok(s.portrait || s.avatar, `${skinId} has no model, so it must at least show art`);
-  }
-  // a skin with NO model may still be a default when it has a portrait or avatar (浊心斯卡蒂), but a skin with no art
-  // at all must never be: choosing it would change nothing visible
-  const noArt = [];
-  for (const [charId, rec] of Object.entries(assetsData.chars)) {
-    for (const [skinId, s] of Object.entries(rec.skins || {})) if (!s.spine && !s.portrait && !s.avatar) noArt.push(skinId);
-  }
-  for (const skinId of noArt) {
-    assert.ok(!Object.values(map).includes(skinId), `${skinId} has no art at all and must not be a default`);
-  }
-});
+  test('a reconnecting player keeps the choice (the resync replays m.public)', () => {
+    const h = makeMatch({ mode: 'coop', seats });
+    h.start();
+    h.m.setSkins('p_0', { [OPERATOR]: SKIN });
+    h.sent.length = 0;
+    h.m.onReconnect('p_0');
+    const pub = h.lastTo('p_0', 'm.public');
+    assert.ok(pub, 'the reconnect resends m.public');
+    assert.deepEqual(pub.players.find((p) => p.playerId === 'p_0').skins, { [OPERATOR]: SKIN });
+  });
 
-test('D038 商店立绘：选中皮肤时取皮肤立绘，未选中或缺立绘时回退原皮', () => {
-  // The manifest groups skins per operator, the choice is per chess — the resolver takes the record and the skin id
-  // (see assetUrls.chessSkinPortraitUrl). Everything here is a pure function over the committed data.
-  const withChar = (patch = {}) => ({ chessId: 'chess_x', charId: 'char_498_inside', assets: { portrait: 'char_498_inside_1' }, ...patch });
-
-  // no choice, or an unknown skin, or a record with no operator: no skin-URL at all (the caller falls back)
-  assert.equal(chessSkinPortraitUrl(assetsData, withChar(), null), null, 'no choice');
-  assert.equal(chessSkinPortraitUrl(assetsData, withChar(), ''), null, 'empty id');
-  assert.equal(chessSkinPortraitUrl(assetsData, withChar(), 'char_498_inside@nope#99'), null, 'unknown skin');
-  assert.equal(chessSkinPortraitUrl(assetsData, { chessId: 'c', assets: {} }, 'char_498_inside@kitchen#2'), null, 'no operator');
-  assert.equal(chessSkinPortraitUrl(null, withChar(), 'char_498_inside@kitchen#2'), null, 'no manifest');
-
-  // with a real choice: the URL comes from the manifest's skin entry, and only ever from there
-  const skinId = 'char_498_inside@kitchen#2';
-  assert.ok(assetsData.chars.char_498_inside.skins[skinId], 'the fixture skin is installed');
-  const m = { chars: {
-    char_498_inside: {
-      portrait: '/assets/char/portrait/char_498_inside.png',
-      skins: { [skinId]: { name: '甜品大奖', portrait: '/assets/char/skin_portrait/char_498_inside@kitchen#2.png' } },
-    },
-  } };
-  assert.equal(chessSkinPortraitUrl(m, withChar(), skinId), '/assets/char/skin_portrait/char_498_inside@kitchen#2.png');
-
-  // a skin with no portrait entry of its own (upstream ships 131 of 174) falls back to the operator's own portrait,
-  // so a card never goes blank; and with no operator art either it yields null rather than a URL the server lacks
-  const mNoPortrait = { chars: {
-    char_498_inside: {
-      portrait: '/assets/char/portrait/char_498_inside.png',
-      skins: { [skinId]: { name: '甜品大奖' } },
-    },
-  } };
-  assert.equal(chessSkinPortraitUrl(mNoPortrait, withChar(), skinId), '/assets/char/portrait/char_498_inside.png', 'skin without a portrait falls back');
-  const mBare = { chars: { char_498_inside: { skins: { [skinId]: { name: '甜品大奖' } } } } };
-  assert.equal(chessSkinPortraitUrl(mBare, withChar(), skinId), null, 'no operator art either: null, not a missing URL');
-
-  // the fallback for the operator's own art tries the record's portrait id first (`…_1`) and then the charId, the
-  // same two keys chessAvatarUrl uses
-  const mSelf = { chars: {
-    char_498_inside: { portrait: '/assets/char/portrait/char_498_inside.png' },
-    char_498_inside_1: { portrait: '/assets/char/portrait/char_498_inside_1.png' },
-  } };
-  assert.equal(chessSkinPortraitUrl(mSelf, withChar(), skinId), '/assets/char/portrait/char_498_inside_1.png', 'portrait id wins');
-  assert.equal(chessSkinPortraitUrl(mSelf, withChar({ assets: {} }), skinId), '/assets/char/portrait/char_498_inside.png', 'charId fallback');
-
-  // The committed manifest is the real shape, and it now carries portraits for the skins whose art was fetched (I006
-  // step ①: `tools/fetch-skin-portraits.mjs` + the injector). The rule, checked against whatever is committed rather
-  // than a frozen count: a skin with its own portrait resolves to it; a skin without one falls back to the operator's
-  // own art (so a card never goes blank), which is null only when the manifest lacks that art too.
-  let checked = 0;
-  let withPortrait = 0;
-  let viaAvatar = 0;
-  let viaOperator = 0;
-  for (const [charId, rec] of Object.entries(assetsData.chars)) {
-    for (const [id, entry] of Object.entries(rec.skins || {})) {
-      const chess = Object.values(chessData).find((c) => c.charId === charId);
-      if (!chess) continue;
-      checked++;
-      const url = chessSkinPortraitUrl(assetsData, chess, id);
-      if (entry.portrait) {
-        withPortrait++;
-        assert.equal(url, entry.portrait, `${id} resolves to its own portrait`);
-      } else if (entry.spine && entry.avatar) {
-        // no half-body portrait upstream, but the skin HAS a model and an avatar: the card must show the SKIN, not the
-        // operator's own art — otherwise the battlefield wears the skin and every card looks undressed
-        viaAvatar++;
-        assert.equal(url, entry.avatar, `${id} shows its avatar rather than the operator's art`);
-      } else if (url) {
-        viaOperator++;
-        assert.ok(url.includes('/char/portrait/'), `${id} falls back to operator art, got ${url}`);
+  test('changing and clearing skins refreshes the owner and an already-open prep scout', () => {
+    const h = makeMatch({ humans: 2, spectators: ['s_0'] }).start();
+    h.toPrep();
+    const ps = h.ps('p_0');
+    const board = ps.newPiece('chess', 'chess_char_1_01_a');
+    ps.board.set('10,4', board);
+    ps.hand[0] = ps.newPiece('chess', board.id);
+    ps.temp[0] = ps.newPiece('chess', board.id);
+    ps.dirty();
+    h.flushAll();
+    for (const id of ['p_1', 's_0']) assert.equal(h.m.handle(id, { t: 'g.watch', fieldId: 'n:p_0' }).ok, true);
+    for (const selected of [SKIN, null]) {
+      h.sent.length = 0;
+      assert.equal(h.m.setSkins('p_0', selected ? { [OPERATOR]: selected } : {}).ok, true);
+      h.flushAll();
+      const priv = h.lastTo('p_0', 'm.private');
+      assert.ok(priv, 'the owner receives the changed board and benches without another action');
+      for (const piece of [priv.board.find((p) => p.uid === board.uid), priv.hand[0], priv.temp[0]]) {
+        assert.equal(piece.skin, selected || undefined);
+      }
+      for (const id of ['p_1', 's_0']) {
+        const scout = h.lastTo(id, 'm.field');
+        assert.ok(scout?.prep, 'an existing scouting view is refreshed');
+        for (const uid of [board.uid, ps.hand[0].uid, ps.temp[0].uid]) {
+          assert.equal(scout.units.find((u) => u.uid === uid).skin, selected || undefined);
+        }
       }
     }
-  }
-  assert.ok(checked > 100, `checked ${checked} installed skins against the committed manifest`);
-  assert.ok(withPortrait > 0, `the manifest carries portraits (${withPortrait}) — fetch-skin-portraits + inject ran`);
-  assert.ok(viaAvatar > 0, `and ${viaAvatar} skins show their avatar because upstream ships no portrait`);
-  assert.ok(viaOperator + viaAvatar + withPortrait === checked, 'every installed skin resolves to some art');
+  });
+
+  test('stand-in board, hand, temp, scouting and battle use the effective operator skin', () => {
+    const rec = Object.values(DATA.chess).find((c) => !c.isGolden && c.backup?.charId && c.backup.charId !== c.charId && c.chessType === 'NORMAL');
+    const body = rec.backup.charId;
+    const selected = `${body}@body#1`;
+    const h = makeMatch({ mode: 'solo', seats: [{ seat: 0, playerId: 'p_0', name: 'P0', connected: true,
+      notOwned: [rec.chessId], skins: { [rec.charId]: `${rec.charId}@original#1`, [body]: selected } }] });
+    const ps = h.ps('p_0');
+    const p = ps.newPiece('chess', rec.chessId);
+    ps.board.set('10,4', p);
+    ps.hand[0] = ps.newPiece('chess', rec.chessId);
+    ps.temp[0] = ps.newPiece('chess', rec.chessId);
+    const priv = ps.privateView();
+    const own = [priv.board[0], priv.hand[0], priv.temp[0]];
+    const scout = h.m.prepFieldMeta(ps).units.filter((u) => own.some((v) => v.uid === u.uid));
+    const battle = ps.battleInput().units.find((u) => u.uid === p.uid);
+    const model = { skel: '/test/body.skel', atlas: '/test/body.atlas', anims: { idle: 'Idle' } };
+    const art = { chars: { [body]: { skins: { [selected]: { spine: { front: model } } } } } };
+    for (const u of [...own, ...scout, battle]) {
+      assert.equal(u.skin, selected);
+      assert.equal(spineEntry(art, body, { skin: u.skin }).skel, model.skel);
+    }
+    const sim = new Battle({ fieldId: 'test', data: DATA, players: [ps.battleInput()], spawns: [] });
+    sim.start();
+    const info = sim.fieldMeta().units.find((u) => u.uid === p.uid);
+    assert.equal(info.spine, body);
+    assert.equal(info.skin, selected);
+    h.m.setSkins('p_0', { [rec.charId]: `${rec.charId}@original#1` });
+    assert.equal(ps.pieceView(p).skin, undefined, 'an original operator choice never dresses its stand-in');
+  });
+
+  test('every view of a piece carries the skin, keyed by the operator of the piece', () => {
+    const h = makeMatch({ mode: 'coop', seats: [{ seat: 0, playerId: 'p_0', name: 'P0', isBot: false, connected: true, skins: { [OPERATOR]: SKIN } }] });
+    const ps = h.ps('p_0');
+    // the base chess and its elite form are the SAME operator: one entry covers both, which is the whole reason the key
+    // is a charId (data/chess.json: assets.spine === charId for 258 of the 266 records)
+    const base = ps.newPiece('chess', 'chess_char_1_01_a');
+    const golden = ps.newPiece('chess', 'chess_char_1_01_b');
+    assert.equal(DATA.chess['chess_char_1_01_a'].charId, OPERATOR);
+    assert.equal(DATA.chess['chess_char_1_01_b'].charId, OPERATOR);
+    assert.equal(ps.pieceView(base).skin, SKIN);
+    assert.equal(ps.pieceView(golden).skin, SKIN, 'the elite keeps the appearance chosen before the merge');
+    for (const u of ps.battleInput({ side: 'L' }).units) assert.equal(u.skin, SKIN, 'battleInput carries it into the sim');
+    // a 自选 slot's own record has no charId; its piece wears its PICK's operator (server/match/player/round.js)
+    const slot = ps.newPiece('chess', 'chess_char_6_diy1_a');
+    assert.equal(DATA.chess['chess_char_6_diy1_a'].charId, null);
+    assert.ok(!ps.pieceView(slot).skin, 'without a pick there is no operator, so no skin');
+  });
+
+  test('the sim puts the skin on UnitInfo (unit → snapshot) and drops the key when there is none', () => {
+    const h = makeMatch({ mode: 'coop', seats });
+    const b = new Battle({
+      fieldId: 'n:p_0', kind: 'normal', data: DATA, log: { warn() {}, error() {}, info() {} },
+      players: [{ playerId: 'p_0', units: [{ kind: 'chess', chessId: 'chess_char_1_01_a', row: 9, col: 0, skin: SKIN }] }],
+      spawns: [],
+    });
+    b.start();
+    const units = b.fieldMeta().units;
+    const mine = units.find((u) => u.defId === 'chess_char_1_01_a');
+    assert.equal(mine.skin, SKIN);
+    // `undefined`, not null: JSON.stringify drops it, so an install with no skin is byte-identical to before the feature
+    const plain = new Battle({
+      fieldId: 'n:p_0', kind: 'normal', data: DATA, log: { warn() {}, error() {}, info() {} },
+      players: [{ playerId: 'p_0', units: [{ kind: 'chess', chessId: 'chess_char_1_01_a', row: 9, col: 0 }] }],
+      spawns: [],
+    });
+    plain.start();
+    const other = plain.fieldMeta().units.find((u) => u.defId === 'chess_char_1_01_a');
+    assert.equal(other.skin, undefined);
+    assert.ok(!JSON.stringify(other).includes('"skin"'), 'no key on the wire at all');
+  });
+
+  test('the same seeded battle ends the same with and without a skin', () => {
+    const spec = { seed: 498, timeLimit: 1, autoFinish: true, units: [{ chessId: 'chess_char_1_01_a', row: 10, col: 4 }] };
+    const plain = makeBattle(spec);
+    const worn = makeBattle({ ...spec, units: [{ chessId: 'chess_char_1_01_a', row: 10, col: 4, skin: SKIN }] });
+    assert.equal(plain.unit('chess_char_1_01_a').skin, null);
+    assert.equal(worn.unit('chess_char_1_01_a').skin, SKIN, 'the skin is on the unit');
+    const a = plain.runToEnd();
+    const b = worn.runToEnd();
+    assert.deepEqual(b, a);
+    assert.ok(!JSON.stringify(a).includes(SKIN), 'Battle.result does not carry the skin');
+  });
+
+  test('no file under server/sim reads Unit.skin except the three that carry it', () => {
+    const root = path.join(ROOT, 'server', 'sim');
+    const hits = [];
+    const walk = (dir) => {
+      for (const ent of readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, ent.name);
+        if (ent.isDirectory()) walk(p);
+        else if (ent.name.endsWith('.js') && readFileSync(p, 'utf8').includes('.skin')) hits.push(path.relative(ROOT, p));
+      }
+    };
+    walk(root);
+    hits.sort();
+    assert.deepEqual(hits, ['server/sim/battle/players.js', 'server/sim/snapshot.js', 'server/sim/units.js']);
+  });
 });
 
+describe('皮肤: the client resolves the appearance (assets.js)', () => {
+  test('spineEntry asks for the skin, falls back to the operator\'s own model, and knows Front from Back', () => {
+    assert.equal(spineEntry(MANIFEST, OPERATOR, { skin: SKIN }).skel, '/s/inside_kitchen/front.skel');
+    assert.equal(spineEntry(MANIFEST, OPERATOR, { skin: SKIN, back: true }).skel, '/s/inside_kitchen/back.skel');
+    assert.equal(spineEntry(MANIFEST, OPERATOR).skel, '/s/inside/front.skel');
+    // an unknown / missing / art-only skin: the operator's own model, never null
+    assert.equal(spineEntry(MANIFEST, OPERATOR, { skin: 'gone' }).skel, '/s/inside/front.skel');
+    assert.equal(spineEntry(MANIFEST, OPERATOR, { skin: 'char_498_inside@art#9' }).skel, '/s/inside/front.skel');
+    // a skin of ANOTHER operator is not this operator's: there is no such skin under `chars[OTHER].skins`, and OTHER has
+    // no model of its own in this manifest, so nothing resolves at all
+    assert.equal(spineEntry(MANIFEST, OTHER, { skin: SKIN }), null);
+    assert.equal(spineEntry(MANIFEST, OTHER, { skin: SKIN_OTHER }), null);
+  });
+
+  test('avatarUrl / portraitUrl / illustUrl prefer the skin and fall back to the operator\'s art, never to a placeholder', () => {
+    assert.equal(avatarUrl(MANIFEST, OPERATOR, { skin: SKIN }), '/a/inside_kitchen.png');
+    assert.equal(avatarUrl(MANIFEST, OPERATOR, { skin: 'gone' }), '/a/inside.png');
+    assert.equal(avatarUrl(MANIFEST, OPERATOR), '/a/inside.png');
+    assert.equal(portraitUrl(MANIFEST, OPERATOR, { skin: SKIN }), '/p/inside_kitchen_1.png');
+    assert.equal(portraitUrl(MANIFEST, OPERATOR, { skin: 'gone' }), '/p/inside_1.png');
+    assert.equal(illustUrl(MANIFEST, OPERATOR, { skin: SKIN }), '/i/inside_kitchen.png');
+    assert.equal(illustUrl(MANIFEST, OPERATOR), '/i/inside.png');
+    assert.equal(illustUrl(MANIFEST, OTHER, { skin: SKIN }), '/i/kalts.png', 'a skin of another operator: the operator\'s own');
+    // an art-only skin still resolves its own picture (the picker shows it) but has no model
+    assert.equal(avatarUrl(MANIFEST, OPERATOR, { skin: 'char_498_inside@art#9' }), '/a/only_art.png');
+    assert.equal(unitPictureUrl(MANIFEST, OPERATOR, { skin: SKIN }), '/a/inside_kitchen.png');
+  });
+
+  test('hasBackSpine asks the skin, then the operator', () => {
+    assert.equal(hasBackSpine(MANIFEST, OPERATOR, SKIN), true);
+    assert.equal(hasBackSpine(MANIFEST, OPERATOR), false, 'the operator\'s own model has no Back in this manifest');
+    assert.equal(hasBackSpine(MANIFEST, OPERATOR, 'gone'), false);
+  });
+
+  test('skinsOf / skinHasModel: what the picker offers is what the renderer can wear', () => {
+    assert.deepEqual(Object.keys(skinsOf(MANIFEST, OPERATOR)), [SKIN, 'char_498_inside@art#9']);
+    assert.deepEqual(skinsOf(MANIFEST, OTHER), {}, 'no skins: the picker draws no section');
+    assert.equal(skinHasModel(skinsOf(MANIFEST, OPERATOR)[SKIN]), true);
+    assert.equal(skinHasModel(skinsOf(MANIFEST, OPERATOR)['char_498_inside@art#9']), false);
+  });
+});
+
+describe('皮肤: the own prep view carries the choice (render/app.js)', () => {
+  /**
+   * The renderer's source: the prep view needs a canvas, a GPU and PIXI, so its rules are pinned on the text the way
+   * test/ui/standin-ui.test.js and test/ui/diy-ui.test.js pin pieceInfo's other reads. The extracted body is one
+   * top-level function of the factory (its signature up to the line that closes it at function indentation), so an
+   * assertion cannot be satisfied by some other function of a 2200-line file.
+   */
+  const APP_SRC = readFileSync(path.join(ROOT, 'public/js/render/app.js'), 'utf8');
+  const appFunctionBody = (signature) => {
+    const i = APP_SRC.indexOf(signature);
+    assert.ok(i >= 0, `public/js/render/app.js no longer declares ${signature}`);
+    const end = APP_SRC.indexOf('\n  }', i);
+    assert.ok(end > i, `${signature} is not closed at function indentation`);
+    return APP_SRC.slice(i, end);
+  };
+
+  test('pieceInfo hands the piece\'s skin to the view (server/match/player/views.js pieceView sends it)', () => {
+    const body = appFunctionBody('function pieceInfo(piece, area) {');
+    assert.match(body, /\n      skin: piece\.skin \|\| null,/,
+      'the op branch must carry it: without it the prep board, the hand and the 临时整备区 draw the default model until '
+      + 'the first battle, while a teammate scouting the same board already sees the skin');
+  });
+
+  test('the skin is part of the prep signature, so a change rebuilds the piece\'s view (setPrep)', () => {
+    const line = APP_SRC.split('\n').find((l) => l.includes('const sig = `${info.kind}'));
+    assert.ok(line, 'setPrep still signs its prep pieces');
+    // the template the 补位 suite pins verbatim (test/ui/standin-ui.test.js) is not rewritten by this feature …
+    assert.match(APP_SRC, /const sig = `\$\{info\.kind\}\|\$\{info\.defId\}\|\$\{info\.golden \? 1 : 0\}\|\$\{info\.spine \|\| ''\}`/,
+      'the pinned template stays as it is; the appearance is appended after it');
+    // … the appearance is appended to it, so switching it changes the signature and the view is rebuilt instead of
+    // keeping the model it was built on (render/app.js dropView)
+    assert.ok(line.includes("(info.skin ? `|${info.skin}` : '')"), 'a changed skin must change the signature');
+  });
+
+  test('a boss pair\'s read-only pieces follow 设置「显示其他玩家的皮肤」 too (syncReadOnlyPrepUnits)', () => {
+    const body = appFunctionBody('function syncReadOnlyPrepUnits(units) {');
+    assert.match(body, /info\.skin = shownSkin\(info\);/,
+      'the partner half is another seat\'s board: the switch must reach it like it reaches a battle unit (applyInfo)');
+    const line = body.split('\n').find((l) => l.includes('const sig = `${info.defId}'));
+    assert.ok(line && line.includes("|${info.skin || ''}"), 'a partner switching mid-match rebuilds the piece');
+  });
+});
+
+describe('皮肤: the client never sends more than the wire accepts', () => {
+  /** A selection past SKIN_LIMITS.entries, shaped like one a hand-edited localStorage could hold. */
+  const overLimit = () => {
+    const m = {};
+    for (let i = 0; i < SKIN_LIMITS.entries + 24; i++) m[`char_${i}_x`] = `${OPERATOR}@s#${i}`;
+    return m;
+  };
+
+  test('parseStoredSkins keeps at most SKIN_LIMITS.entries pairs, in insertion order', () => {
+    const big = overLimit();
+    assert.equal(isSkinSelection(big), false, 'the raw map is what the server refuses as a whole');
+    const kept = parseStoredSkins(big);
+    assert.equal(Object.keys(kept).length, SKIN_LIMITS.entries);
+    assert.deepEqual(Object.keys(kept), Object.keys(big).slice(0, SKIN_LIMITS.entries));
+    assert.ok(isSkinSelection(kept), 'what it yields is what the server stores');
+    // a pair that is not a pair does not spend the budget (the first 160 KEPT entries are what fit)
+    const junk = { '': 'x', a: '', b: 7, c: null };
+    for (let i = 0; i < SKIN_LIMITS.entries; i++) junk[`char_${i}_x`] = `${OPERATOR}@s#${i}`;
+    assert.equal(Object.keys(parseStoredSkins(junk)).length, SKIN_LIMITS.entries);
+  });
+
+  test('room.skins goes out at the limit however the store was filled (installSkinsSync)', async () => {
+    const target = createStore({ [SKINS_KEY]: overLimit(), [SKINS_SYNC_KEY]: 'idle' });
+    const net = {
+      status: 'online', sent: [], on: () => () => {},
+      request: async (t, body) => { net.sent.push({ t, ...body }); return { t: 'ok' }; },
+    };
+    const sync = installSkinsSync({ net, target });
+    try {
+      await sync.flush();
+    } finally { sync.dispose(); }
+    assert.equal(net.sent.length, 1, 'one room.skins');
+    assert.equal(net.sent[0].t, 'room.skins');
+    assert.equal(Object.keys(net.sent[0].skins).length, SKIN_LIMITS.entries);
+    assert.ok(isSkinSelection(net.sent[0].skins), 'a payload the server stores instead of refusing (BAD_MSG)');
+    assert.equal(target.get()[SKINS_SYNC_KEY], 'synced');
+  });
+});
+
+describe('皮肤: the install channel is not in this branch', () => {
+  test('no server module downloads a skin, and no route writes data/assets.json', () => {
+    const lobby = readFileSync(path.join(ROOT, 'server/lobby.js'), 'utf8');
+    assert.ok(!/skinInstall|skin\.install|skins\.changed|installSkinInBackground/.test(lobby),
+      'the installer route of feat/skins must not be ported (upstream #652 closed it: an unauthenticated request let any client make the server download files and rewrite the shared manifest)');
+    assert.ok(!/install-skins/.test(lobby), 'and it must not reach the CLI installer either');
+    // the overlay is the only source of an appearance: nothing is read from data/skins*.json
+    const skins = readFileSync(path.join(ROOT, 'public/js/ui/skins.js'), 'utf8');
+    assert.ok(!/skinsLocal|skins-local|data\/skins\.json|'skins'\)\.chars/.test(skins), 'the client reads the composed manifest, not a catalogue file');
+  });
+});

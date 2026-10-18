@@ -31,6 +31,8 @@ export class MatchSpDraft {
       if (!this.isSolo) this.rngDraft.shuffle(g.order);
       this.prioritizeDraftOrder(g.order);
     }
+    const alive = this.alivePlayers();
+    if (!alive.length) { this.beforePrepOffers(); return; }
     this.phase = PHASE.SP_DRAFT;
     this.sp = installDraftFacade({ ...pages[0], id: this.nextDraftId('sp'), groups, picks: {}, untimed: this.soloUntimed },
       ['order', 'idx', 'cards', 'taken', 'turnDeadline', 'turnSeconds']);
@@ -161,6 +163,9 @@ export class MatchSpDraft {
     if (this.phase !== PHASE.SP_DRAFT) return;
     for (const g of this.sp.groups) this.clearDraftGroupTimer(g);
     this.enterPrep();
+    this.cancel(this._turnTimer);
+    this._turnTimer = null;
+    this.beforePrepOffers();
   }
 
   /**
@@ -235,25 +240,28 @@ export class MatchSpDraft {
    * read it. `pick` still drops ids that `canGain` refuses, so an empty shop item stays out and an uncapped `also`
    * id can still be drawn. `player` selects the 20-player GROUP pool (this fork); the stock read below uses it.
    */
-  rollItemId({ pool = null, tier = null, maxTier = 6, shopLevel = 6, player = null } = {}) {
+  rollItemId({ pool = null, tier = null, maxTier = 6, shopLevel = 6, player = null, exclude = [] } = {}) {
     const pools = this.gd.choices.pools && typeof this.gd.choices.pools === 'object' ? this.gd.choices.pools : {};
     const p = typeof pool === 'string' && Object.hasOwn(pools, pool) ? pools[pool] : null;
     const rng = this.rngMeta;
+    // this fork: the row is drawn from the PLAYER'S GROUP pool (20-player rooms split stock per group)
     const stock = this.itemPoolFor(player);
+    // upstream 0.3.1: ids already spent on a match-long allowance (or drawn once in a distinct-choice set) are dropped
+    // before sampling; an empty `exclude` costs nothing.
+    const notExcluded = (ids) => (exclude.length ? ids.filter((id) => !exclude.includes(id)) : ids);
     const tierList = (lo, hi) => { const out = []; for (let t = lo; t <= hi; t++) for (const id of this.gd.shopItemsByTier[t] || []) out.push(id); return out; };
     const also = p && Array.isArray(p.also) ? p.also.filter((id) => typeof id === 'string' && this.gd.item(id)) : [];
     const withAlso = (list) => {
-      const out = list.slice();
-      for (const id of also) if (!out.includes(id)) out.push(id);
+      const out = notExcluded(list.slice());
+      for (const id of also) if (!out.includes(id) && !exclude.includes(id)) out.push(id);
       return out;
     };
     if (p && p.kind === 'equip') {
-      // ONE implementation per branch: this fork's `stock` (the drawing player's GROUP pool) with upstream 0.3.0's
-      // `also` list. The merge had left this fork's early returns first and upstream's `withAlso` versions unreachable
-      // behind them, so a pool's `also` (pool_equip_kathe → 突变细胞) could never be drawn.
+      // ONE implementation per branch: this fork's `stock` (the drawing player's GROUP pool) with the pool's `also`
+      // list (pool_equip_kathe → 突变细胞), and upstream's `exclude` filter on top.
       if (Array.isArray(p.weighted) && p.weighted.length) {
-        const pairs = p.weighted.filter((x) => Array.isArray(x) && this.gd.item(x[0]) && stock.canGain(x[0]));
-        for (const id of also) if (!pairs.some((x) => x[0] === id)) pairs.push([id, 1]);
+        const pairs = p.weighted.filter((x) => Array.isArray(x) && this.gd.item(x[0]) && stock.canGain(x[0]) && !exclude.includes(x[0]));
+        for (const id of also) if (!exclude.includes(id) && !pairs.some((x) => x[0] === id)) pairs.push([id, 1]);
         return stock.pick(rng, pairs.map((x) => x[0]), new Map(pairs));
       }
       if (Array.isArray(p.items) && p.items.length) {
@@ -266,7 +274,7 @@ export class MatchSpDraft {
       return stock.pick(rng, withAlso(list));
     }
     const list = Number.isInteger(tier) ? tierList(tier, tier) : tierList(1, Math.max(1, Math.min(6, maxTier)));
-    return stock.pick(rng, list);
+    return stock.pick(rng, notExcluded(list));
   }
 
   /**
@@ -277,14 +285,15 @@ export class MatchSpDraft {
    * bonds (the player's data view: a slotted slot's operator) — 0.2.0 WE2.
    * @returns {{ kind: 'item'|'chess', id: string, golden?: boolean } | null}
    */
-  rollPool(poolId, { shopLevel = 6, extra = null, chessOf = null, player = null } = {}) {
-    const pool = this.poolFor(player);
+  rollPool(poolId, { shopLevel = 6, extra = null, chessOf = null, player = null, exclude = [] } = {}) {
     const pools = this.gd.choices.pools && typeof this.gd.choices.pools === 'object' ? this.gd.choices.pools : {};
     const p = typeof poolId === 'string' && Object.hasOwn(pools, poolId) ? pools[poolId] : null;
     if (!p || typeof p !== 'object') return null;
     const lvl = Math.max(1, Math.min(6, Number.isInteger(shopLevel) ? shopLevel : 6));
+    // this fork: the chess side reads the drawing player's GROUP pool (20-player rooms split stock per group)
+    const pool = this.poolFor(player);
     if (p.kind === 'equip') {
-      const id = this.rollItemId({ pool: poolId, shopLevel: lvl, player });
+      const id = this.rollItemId({ pool: poolId, shopLevel: lvl, player, exclude });
       return id ? { kind: 'item', id } : null;
     }
     if (p.kind !== 'chess') return null;

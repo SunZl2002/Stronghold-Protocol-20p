@@ -126,7 +126,11 @@ export class Session {
     this.notOwned = null;
     /** @type {Readonly<Record<string, { charId: string, skillIndex: number, uniEquipId: string|null }>> | null} checked 自选 picks (lobby-owned, 0.2.0 自选编队) */
     this.diy = null;
-    /** @type {Readonly<Record<string, string>> | null} checked skin selection { [chessId]: skinId } (lobby-owned, docs/SKINS.md) */
+    /**
+     * @type {Readonly<Record<string, string>> | null} chosen operator skins (lobby-owned, docs/SKINS.md): keyed by operator
+     * charId (upstream 0.3.1's model), PUBLIC unlike the loadout — a teammate sees your skin through
+     * Match.publicView().players[].skins
+     */
     this.skins = null;
     /** @type {string} client address of the latest connection (logging) */
     this.addr = '?';
