@@ -24,7 +24,7 @@
 
 import { createStore, loadPref, savePref } from '../store.js';
 import { data } from '../data.js';
-import { SKIN_LIMITS, isCharId, isSkinId } from '../../../shared/protocol.js';
+import { SKIN_LIMITS } from '../../../shared/protocol.js';
 
 /** The localStorage preference (`sp.pref.<key>`) of this browser's skin choices: `{ [charId]: skinId }`. */
 export const SKINS_PREF = 'skins';
@@ -65,11 +65,11 @@ export function parseStoredSkins(raw) {
   for (const [charId, skinId] of Object.entries(raw)) {
     if (kept >= SKIN_LIMITS.entries) break;
     if (!str(charId) || !str(skinId)) continue;
-    // A choice is keyed by OPERATOR charId (upstream 0.3.1). This fork's older builds stored it by chess id, and such a key
-    // must not survive: `room.skins` is validated with isCharId/isSkinId on the server, so one chess-keyed entry got the
-    // whole map refused (BAD_MSG) and a player's pick never reached the match. Those entries are dropped — the operator
-    // shows its own art until it is chosen again.
-    if (!isCharId(charId) || !isSkinId(skinId)) continue;
+    // A choice is keyed by OPERATOR charId (upstream 0.3.1). This fork's older builds stored it by CHESS id, and such a key
+    // must not survive: `room.skins` is validated with isCharId on the server, so one chess-keyed entry got the whole map
+    // refused (BAD_MSG) and a player's pick never reached the match. Only the old form is dropped — the parser stays
+    // permissive about everything else (a hand-edited localStorage, a future key shape).
+    if (charId.startsWith('chess_')) continue;
     out[charId] = skinId;
     kept++;
   }
