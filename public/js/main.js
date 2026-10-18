@@ -433,14 +433,12 @@ async function boot() {
   installAssetCache();
   installStatsRecorder(store); // follows the match on screen, so a 放弃模拟 can be recorded (ui/stats.js)
   installLoadoutSync({ net });
-  installSkinsSync({ net });
-  // D037: seed a fresh browser with the default skins before the first welcome, so the choice is mirrored on connect
-  // instead of waiting for the 干员调配 screen to be opened.
-  loadSkinData();
   installOwnershipSync({ net });
   installDiySync({ net });
   // 干员皮肤 (docs/SKINS.md): keeps the server's copy of this browser's chosen appearances current (room.skins), from
-  // ui/skins.js' own store — its 皮肤 section is rendered by screens/loadout.js.
+  // ui/skins.js' own store — its 皮肤 section is rendered by screens/loadout.js. The manifest loads lazily
+  // (`data.load('assets')`), so 0.3.1's boot has no loadSkinData priming step (the merge had left one behind, and it
+  // threw on the very first frame: ReferenceError: loadSkinData is not defined).
   installSkinsSync({ net });
   // the room's cosmetic plugins and the player's own over the art manifest (content.js; nothing is fetched without them)
   installContent({ toast });

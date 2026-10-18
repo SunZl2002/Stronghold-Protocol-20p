@@ -161,7 +161,7 @@ export function createStaticHandler({ publicDir, dataDir, sharedDir, simDir = pa
   const immutable = 'public, max-age=31536000, immutable';
   const stale = (req, res) => sendError(req, res, 409, '页面资源版本已变化，请刷新页面 · Runtime version changed, reload');
 
-  return async function serveStatic(req, res, rawPath, query) {
+  const serveStaticHandler = async function serveStatic(req, res, rawPath, query) {
     let decoded;
     try { decoded = decodeURIComponent(rawPath); } catch { sendError(req, res, 400, '请求地址无效 · Bad request'); return; }
     if (!decoded.startsWith('/') || decoded.includes('\0') || decoded.includes('\\')) {
@@ -401,6 +401,20 @@ export function createStaticHandler({ publicDir, dataDir, sharedDir, simDir = pa
     const opts = indexed ? hashedFileOpts(assetIndex, segments.join('/'), stat, urlHash) : (urlHash ? { cacheControl: 'no-cache' } : {});
     await serveFile(req, res, absPath, stat, mount.name, segments, query, gzipCache, log, opts);
   };
+
+  /**
+   * `public/index.html` exactly as it goes out — the runtime cache rewrites its import map with the per-version `?rv=`
+   * query, so the bytes on disk are NOT what a browser validates a CSP hash against. The site policy hashes this.
+   * @returns {Promise<string|null>}
+   */
+  serveStaticHandler.renderIndexHtml = async () => {
+    try {
+      const rendered = await runtime.renderIndex(path.join(publicDir, 'index.html'));
+      const body = rendered?.body;
+      return body == null ? null : String(body);
+    } catch { return null; }
+  };
+  return serveStaticHandler;
 }
 
 /**

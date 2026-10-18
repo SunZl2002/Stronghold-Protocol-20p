@@ -9,11 +9,20 @@ import { createHash } from 'node:crypto';
 // SES evaluates confined code. This relaxation belongs only to the simulation Worker, never its parent document.
 export const SIM_WORKER_CSP = "default-src 'none'; script-src 'self' 'unsafe-eval'; connect-src 'none'";
 
-export function siteCsp(publicDir) {
+/**
+ * @param {string} publicDir
+ * @param {{ extraHtml?: Array<string|null|undefined> }} [opts] documents the server GENERATES (the runtime cache rewrites
+ *   `public/index.html`'s import map with the per-version `?rv=` query), so the hashes cover what a browser actually
+ *   receives rather than the bytes on disk
+ */
+export function siteCsp(publicDir, { extraHtml = [] } = {}) {
   const hashes = new Set();
+  const docs = [];
   for (const rel of ['index.html', 'studio/index.html', 'studio/console.html', 'dev/game-mock.html', 'dev/render-demo.html', 'dev/battle-perf.html', 'dev/uikit.html']) {
-    let html;
-    try { html = fs.readFileSync(path.join(publicDir, rel), 'utf8'); } catch { continue; }
+    try { docs.push(fs.readFileSync(path.join(publicDir, rel), 'utf8')); } catch { /* a page this install does not ship */ }
+  }
+  for (const html of extraHtml) if (html) docs.push(String(html));
+  for (const html of docs) {
     for (const m of html.matchAll(/<script\s+type=["']importmap["']\s*>([\s\S]*?)<\/script>/g)) {
       hashes.add(`'sha256-${createHash('sha256').update(m[1]).digest('base64')}'`);
     }

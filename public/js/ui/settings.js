@@ -37,7 +37,11 @@ import { t, tc, N_ } from '../../../shared/i18n.js';
 import { errorCount, currentBattle, diagnosticsText } from '../diag.js';
 import { copyText } from './clipboard.js';
 import { setSkinsPolicy, setSkinsAutoPolicy, bumpSkinsPolicy, clearDefaultSkins, restoreDefaultSkins } from './skins.js';
-import { catalog, loadCatalog, cosmeticPlugins, installedCount, personal, personalApplied, personalSet, pluginName, setPersonalPlugin } from '../content.js';
+// the cosmetic-plugin helpers live in content.js here (the 0.3.1 split upstream put them in uiPlugins.js); three names the
+// dialog needs were missing from this line, so opening 设置 threw `ReferenceError: isPersonalCosmetic is not defined` and
+// the modal never rendered — invisible to the jsdom suite, caught by the e2e.
+import { catalog, loadCatalog, cosmeticPlugins, installedCount, isPersonalCosmetic, personal, personalApplied, personalSet, pluginName, setPersonalPlugin } from '../content.js';
+import { resolveThemeVars, themeVarsOf } from '../../../shared/plugins/theme.js';
 import { setUiPlugin, uiPluginEntries, uiPlugins } from './uiPlugins.js';
 import { UI_LIMITS } from '../../../shared/plugins/ui.js';
 import { toast, describeError } from './toasts.js';

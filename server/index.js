@@ -214,8 +214,12 @@ export async function startServer(opts = {}) {
   // BOTH sides' options. Upstream 0.3.0 brings the site CSP, the plugin studio and the trusted runtime; this fork brings
   // the announcements store, the asset-cache admission layer and the bandwidth-emergency gate. The merged call had lost
   // the upstream three, which made every studio request fall through to the GET-only gate and answer 405.
+  // the site policy hashes the import map of the page the server actually SERVES: this fork's runtime cache rewrites
+  // index.html with the per-version `?rv=` query, so hashing the file on disk pins a hash no browser ever validates (the
+  // page then dies on `Executing inline script violates … script-src`).
+  const servedIndexHtml = await serveStatic.renderIndexHtml?.().catch(() => null);
   requestHandler = createRequestHandler({ serveStatic,
-    csp: process.env.SP_CSP === 'off' ? null : siteCsp(publicDir),
+    csp: process.env.SP_CSP === 'off' ? null : siteCsp(publicDir, { extraHtml: [servedIndexHtml] }),
     announcements, assetCache, studio, trustedRuntime,
     trustProxy: network.opts.trustProxy,
     emergency: () => network.emergency, log,

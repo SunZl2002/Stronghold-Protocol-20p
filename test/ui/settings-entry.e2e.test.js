@@ -48,6 +48,10 @@ describe('the settings entry of the lobby and the room', { skip: !ENABLED && 'se
     page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
     await page.goto(`${base}/`, { waitUntil: 'networkidle0', timeout: 60000 });
     await page.waitForSelector('input', { timeout: 15000 });
+    // this fork opens a 公告 modal for an announcement this browser has not read yet (the changelog note), and a fresh
+    // profile has read none — dismiss it so the screen under test is the one this file is about (upstream has no dialog)
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.modal'), { timeout: 5000 }).catch(() => {});
     await page.type('input', '测试博士');
     await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => /开始/.test(b.textContent))?.click());
     await page.waitForSelector('.lobby-screen', { timeout: 15000 });
