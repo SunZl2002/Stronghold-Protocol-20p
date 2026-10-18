@@ -284,9 +284,9 @@ test('lost models, live LP, detail card order, static game data (user playtest #
   assert.deepEqual([...RETRY_DELAYS_MS], [600, 2000]);
   assert.match(DESIGN, /after 600 ms and 2 s \(`RETRY_DELAYS_MS`\)/);
   const panel = readFileSync(join(ROOT, 'public/js/ui/detailPanel.js'), 'utf8');
-  // 'skin' sits between 'skill' and 'module' since D041 put the skin picker on the in-game card, right under the
+  // The skin picker is inserted after 'head' since the v0.3.1 merge (not a CHESS_SECTIONS entry — that array is the
   // portrait's trait block (a54d8ca0); 'actions' closes the list.
-  assert.match(panel, /CHESS_SECTIONS = Object\.freeze\(\['head', 'garrison', 'trait', 'stats', 'skill', 'skin', 'module', 'equip', 'talents', 'actions'\]\)/);
+  assert.match(panel, /CHESS_SECTIONS = Object\.freeze\(\['head', 'garrison', 'trait', 'stats', 'skill', 'module', 'equip', 'talents', 'actions'\]\)/);
   assert.match(DESIGN, /`detailPanel\.js CHESS_SECTIONS`\): header .* → \*\*特质\*\*/);
   assert.match(panel, /export function garrisonTypeIconKey\(garrison\)/);
   assert.match(DESIGN, /official `eventTypeIcon` \(`detailPanel\.js garrisonTypeIconKey`/);

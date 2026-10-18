@@ -305,10 +305,10 @@ export function traitText(c, golden, lo) {
  * such as 休整期结束时 and what it does) right under the header, visible without scrolling; the class trait (特性) and
  * the stats next; then the skill, the elite's module, the equipped items (the player's own build) and the talents.
  */
-// The card's sections, in the order they stack (the panel is a column flex). `skin` sits AFTER the operator's own
+// The card's sections, in the order they stack (the panel is a column flex). The 皮肤 picker is inserted after `skill`
 // description — 特质 / 数值 / 技能 — because that is what the card is for; the owner's correction: 特质 优先比 皮肤高,
 // 在头像下面 (the red block stays directly under the portrait, the picker follows it).
-export const CHESS_SECTIONS = Object.freeze(['head', 'garrison', 'trait', 'stats', 'skill', 'skin', 'module', 'equip', 'talents', 'actions']);
+export const CHESS_SECTIONS = Object.freeze(['head', 'garrison', 'trait', 'stats', 'skill', 'module', 'equip', 'talents', 'actions']);
 
 /**
  * Sprite key (ui `garrisonTypeIcon/…`, small variant) of a 特质's type chip: the garrison's own official
@@ -468,7 +468,7 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
   // asks whether the BOARD may be edited (and goes false the moment the player readies up), which has nothing to do
   // with what this browser draws. What it does need is that the card is OURS: on a teammate's unit `foreignSkin`
   // carries THEIR skin, and this store has no say over it.
-  const ownCard = !foreignSkin && !!c?.chessId;
+  const ownCard = !foreignSkin && !!(c?.chessId || c?.id);
   blocks.skin = ownCard ? html`<${SkinSection} key="skin" chess=${c} />` : null;
   blocks.garrison = garrisons.length > 1
     ? garrisons.map(garrison => html`<${GarrisonBlock} key=${garrison.garrisonId} garrison=${garrison} m=${m} />`)
@@ -511,7 +511,13 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
   blocks.actions = piece && editable && piece.kind !== 'item' ? html`<div key="actions" class="dactions">
       <${Button} variant="amber" icon="close" class="dpanel__sell" onClick=${() => onSell(piece, si || c)}>${t('出售')}<span class="dsell num">+${sell}</span><//>
     </div>` : null;
-  const out = CHESS_SECTIONS.map((k) => blocks[k]).filter(Boolean);
+  // the 皮肤 picker sits right under the header; it is not a CHESS_SECTIONS entry because that array is the positional
+  // contract the UI tests name blocks by (see the note on the array above)
+  const out = [];
+  for (const k of CHESS_SECTIONS) {
+    if (blocks[k]) out.push(blocks[k]);
+    if (k === 'skill' && blocks.skin) out.push(blocks.skin);
+  }
   // a merge-completing shop / reward card: where the elite goes (shopBar mergeHint), right under the header
   if (hint) out.splice(1, 0, html`<p key="merge" class="dhint dhint--merge"><${Icon} name="info" />${t('可晋升：{hint}', { hint })}</p>`);
   return out;

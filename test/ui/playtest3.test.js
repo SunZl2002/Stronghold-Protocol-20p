@@ -288,6 +288,9 @@ describe('3: the temp overflow row (临时整备区)', () => {
 // ---- 8: the operator's own effect first --------------------------------------------------------------------------------
 
 describe('8: 特质 right under the detail card\'s header', () => {
+  // this fork's card has one more block than upstream's CHESS_SECTIONS: the 皮肤 picker, inserted after 技能. mountVNodes
+  // names the sections positionally from the list it is given, so it has to be declared here.
+  const SECTIONS_WITH_SKIN = ['head', 'garrison', 'trait', 'stats', 'skill', 'skin', 'module', 'equip', 'talents', 'actions'];
   // GitHub #175 (from PR #192 by @kukiC): the card's 7 / 14 is the cap the battle applies
   test('华法琳\'s normal and elite cards show the 7 / 14 layer caps (GitHub #175)', async () => {
     await data.loadAll('chess', 'garrisons', 'assets', 'bonds', 'items');
@@ -295,7 +298,7 @@ describe('8: 特质 right under the detail card\'s header', () => {
       // the section names have to skip what renders nothing here (no 模组 for 华法琳, no 装备 without a piece, no
       // 行动 on a read-only card) — CHESS_SECTIONS.map(...).filter(Boolean) drops those, so a plain positional list
       // would name every later block one place too early.
-      const blocks = mountVNodes(preact, ChessDetail, { chess: data.lookup('chess', id), piece: null, editable: false, bonds: [], loadout: null }, { list: CHESS_SECTIONS, absent: ['module', 'equip', 'actions'] });
+      const blocks = mountVNodes(preact, ChessDetail, { chess: data.lookup('chess', id), piece: null, editable: false, bonds: [], loadout: null }, { list: SECTIONS_WITH_SKIN, absent: ['module', 'equip', 'actions'] });
       const block = blocks.find((b) => b.key === 'garrison');
       // the block is mounted, so assert on the text it draws (the RichText source prop is not in the markup)
       assert.match(textOf(block), new RegExp(`每场战斗至多${cap}层`));
@@ -303,9 +306,8 @@ describe('8: 特质 right under the detail card\'s header', () => {
   });
 
   test('the block order', () => {
-    // 'skin' joined the list between 技能 and 模组 with the operator-skin section (D041, night batch of 2026-10-14);
     // test/docs-consistency.test.js guards the same shape.
-    assert.deepEqual(CHESS_SECTIONS, ['head', 'garrison', 'trait', 'stats', 'skill', 'skin', 'module', 'equip', 'talents', 'actions']);
+    assert.deepEqual(CHESS_SECTIONS, ['head', 'garrison', 'trait', 'stats', 'skill', 'module', 'equip', 'talents', 'actions']);
   });
 
   test('a rendered operator card: header, then 特质 (trigger + description), then the rest in CHESS_SECTIONS order', async () => {
@@ -314,7 +316,7 @@ describe('8: 特质 right under the detail card\'s header', () => {
     assert.ok(c && c.garrisonIds && c.garrisonIds[0]);
     const g = data.lookup('garrisons', c.garrisonIds[0]);
     assert.equal(g.eventType, 'SERVER_PREP_FIN');
-    const blocks = mountVNodes(preact, ChessDetail, { chess: c, piece: { uid: 7, kind: 'chess', id: c.chessId, golden: true, items: [] }, editable: false, onSell() {}, bonds: [], loadout: null, onBond: null }, { list: CHESS_SECTIONS, absent: ['actions'] }, { 1: { garrison: g } });
+    const blocks = mountVNodes(preact, ChessDetail, { chess: c, piece: { uid: 7, kind: 'chess', id: c.chessId, golden: true, items: [] }, editable: false, onSell() {}, bonds: [], loadout: null, onBond: null }, { list: SECTIONS_WITH_SKIN, absent: ['actions'] }, { 1: { garrison: g } });
     const keys = blocks.map((b) => b.key);
     // what this card actually draws, in order: 特质 right under the header, the skin section between 技能 and 模组,
     // and no 行动 (the card is not editable here)
@@ -333,7 +335,7 @@ describe('8: 特质 right under the detail card\'s header', () => {
     const descHead = String(g.descRaw || g.desc || '').replace(/<@[^>]*>/g, '').slice(0, 6);
     assert.ok(descHead.length > 0 && textOf(gb).includes(descHead), `its description is drawn (${descHead})`);
     // an operator without a garrison (a summon's chess record may have none) simply starts with the trait
-    const bare = mountVNodes(preact, ChessDetail, { chess: { ...c, garrisonIds: [] }, piece: null, editable: false, bonds: [], loadout: null }, { list: CHESS_SECTIONS, absent: ['garrison', 'equip', 'actions'] });
+    const bare = mountVNodes(preact, ChessDetail, { chess: { ...c, garrisonIds: [] }, piece: null, editable: false, bonds: [], loadout: null }, { list: SECTIONS_WITH_SKIN, absent: ['garrison', 'equip', 'actions'] });
     assert.deepEqual(bare.map((b) => b.key), ['head', 'trait', 'stats', 'skill', 'skin', 'module', 'talents']);
   });
 
