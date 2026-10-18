@@ -241,7 +241,6 @@ export function ChoiceView({ pub, sp, myId, solo, personal = false, busyIdx = nu
     <div class="spov__inner">
       <header class="spov__head">
         <div class="spov__titles">
-          <${MicroLabel} tone="mint">${personal ? t('教鞭选择') : t('CONTINGENCY // 机变阶段')}</${MicroLabel}>
           <i class="spov__deco" aria-hidden="true"></i>
           <h2 class=${cx('spov__title', special && 'is-special')}><span class="spov__name">${sentText(sp.name, rawFam?.name, fam?.name) || fam?.name || t('机变')}</span><span class="spov__bar">|</span><span class="spov__desc"><${RichText} text=${sentText(sp.desc, rawFam?.desc, fam?.desc) || fam?.desc || t('选择一项')} /></span></h2>
           <p class="spov__sub">${sp.done && grouped ? (readonly ? t('该组已完成选择') : t('本组已完成，等待其他组')) : timed ? (personal ? t('休整期结束时未选择将自动选定') : t('倒计时结束后仍未选定将自动分配')) : t('选择一项（无时间限制）')}${mine == null && myTurn ? t(' · 点击卡牌选中，再次点击确认') : ''}</p>
@@ -270,20 +269,6 @@ export function ChoiceView({ pub, sp, myId, solo, personal = false, busyIdx = nu
       </nav>` : null}
       ${readonly && grouped ? html`<p class="spov__readonly" role="status">${t('正在查看{group}组，只有本组成员可以选择', { group: sp.label })}
         ${sp.ownGroupId != null ? html`<button type="button" onClick=${() => onGroup(sp.ownGroupId)}>${t('返回本组')}</button>` : null}</p>` : null}
-      ${order.length ? html`<div class=${cx('spov__order', order.length > 8 && 'spov__order--many')} aria-label=${t('决策顺序')}>
-        ${order.map((pid, i) => {
-          const p = players.get(pid);
-          const picked = sp.pickOf.has(pid);
-          const cur = sp.turnPid === pid && !picked;
-          const left = p?.status === 'left';
-          return html`<div key=${pid} class=${cx('spov__who', cur && 'is-cur', picked && 'is-done', pid === myId && 'is-self')}>
-            <span class="spov__idx num">${i + 1}</span>
-            <${PlayerAvatar} player=${p || { name: '?' }} size="sm" self=${pid === myId} />
-            <span class="spov__wname">${p?.name || t('博士')}</span>
-            <span class="spov__wstate">${left ? html`<${Icon} name="exit" />` : picked ? html`<${Icon} name="check" />` : cur ? html`<${Icon} name="hourglass" />` : html`<${Icon} name="dots" />`}</span>
-          </div>`;
-        })}
-      </div>` : null}
       <div class=${cx('spov__grid', sp.cards.length <= 3 && 'spov__grid--3', sp.cards.length > 6 && 'spov__grid--expanded')}
         style=${sp.cards.length > 6 ? `--sp-cols:${Math.min(6, Math.ceil(sp.cards.length / 2))}` : undefined}>
         ${sp.cards.map((card) => {

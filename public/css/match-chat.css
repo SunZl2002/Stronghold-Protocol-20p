@@ -156,9 +156,9 @@
   animation: danmaku-cross var(--danmaku-dur) linear forwards;
 }
 .danmaku__avatar { display: flex; flex: none; }
-.danmaku__name { font-size: max(.14rem, 11px); color: var(--mint-500); font-weight: 600; }
+.danmaku__name { font-size: max(calc(.14 * var(--t)), 11px); color: var(--mint-500); font-weight: 600; }
 .danmaku__text {
-  font-size: max(.14rem, 11px); color: var(--text-md);
+  font-size: max(calc(.14 * var(--t)), 11px); color: var(--text-md);
   overflow: hidden; text-overflow: ellipsis;
 }
 /* Start fully off the right edge and end fully off the left, so nothing pops in or out mid-screen. */

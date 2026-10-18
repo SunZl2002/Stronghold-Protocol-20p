@@ -387,7 +387,9 @@ describe('match UI of a not-owned chess', () => {
     assert.doesNotMatch(src, /area === 'board' && chess && standInList/, 'not only on the board');
     assert.match(src, /standInList = Array\.isArray\(src\.standIns\)/);
     // the signature now also carries the skin: switching a skin must rebuild the view (docs/SKINS.md)
-    assert.match(src, /const sig = `\$\{info\.kind\}\|\$\{info\.defId\}\|\$\{info\.golden \? 1 : 0\}\|\$\{info\.spine \|\| ''\}\|\$\{info\.skin \|\| ''\}`/);
+    assert.match(src, /const sig = `\$\{info\.kind\}\|\$\{info\.defId\}\|\$\{info\.golden \? 1 : 0\}\|\$\{info\.spine \|\| ''\}`/);
+    // upstream 0.3.1 appends it after the template (` + (info.skin ? ... : '')`), which its own test pins verbatim
+    assert.match(src, /\+ \(info\.skin \?/);
     assert.match(readFileSync(path.join(ROOT, 'public/js/render/app/info.js'), 'utf8'), /standInFor: typeof u\.standInFor === 'string'/);
     // the DOM fallback field draws every own piece of it with the stand-in's avatar and name
     const ff = readFileSync(path.join(ROOT, 'public/js/ui/fallbackField.js'), 'utf8');

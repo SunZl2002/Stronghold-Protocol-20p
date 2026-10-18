@@ -726,8 +726,8 @@ describe('keyboard & settings', () => {
       // combatMetrics / mysticEnergy / officialFx) and this fork's skin + danmaku switches are all part of it now.
       {
         bgm: 1, sfx: 0, voice: 1, voiceLang: 'cn', voiceNative: false, voiceOverrides: {}, muted: false, damageNumbers: false,
-        officialDamageNumbers: false, ammoCount: false, combatMetrics: false, mysticEnergy: false, quality: 'high',
-        officialFx: 'auto', textSize: 'sm',
+        officialDamageNumbers: false, ammoEnergyCount: false, combatMetrics: false, prepDeployFold: true,
+        quality: 'high', officialFx: 'auto', otherSkins: true, textSize: 'sm',
         skinsOn: DEFAULT_SETTINGS.skinsOn, skinsAutoEquip: DEFAULT_SETTINGS.skinsAutoEquip,
         chatDanmaku: DEFAULT_SETTINGS.chatDanmaku,
         keys: { ...DEFAULT_SETTINGS.keys },
