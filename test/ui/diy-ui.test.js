@@ -42,6 +42,9 @@ const { data } = await import('../../public/js/data.js');
 const { DATA } = await import('../match/harness.js');
 const { KITTED_CHARS } = await import('../../server/sim/content/kits/index.js');
 
+// this fork's card adds the 皮肤 picker after 技能, so the positional list that names its blocks says so
+const SECTIONS_WITH_SKIN = ['head', 'garrison', 'trait', 'stats', 'skill', 'skin', 'module', 'equip', 'talents', 'actions'];
+
 await data.loadAll('chess', 'bonds', 'assets', 'garrisons', 'items', 'backups');
 
 const D = { chess: DATA.chess, backups: DATA.backups };
@@ -350,7 +353,7 @@ describe('match UI of a 自选 piece', () => {
     assert.equal(u.chess.charId, SHARP);
     // measured: this card draws head / trait / stats / skill / skin / module / equip / talents — 特质 lists a
     // garrison-less record so CHESS_SECTIONS' 'garrison' block is null and filtered out, and 行动 is not editable
-    const blocks = mountVNodes(preact, ChessDetail, { chess: r.chess, piece, editable: false, bonds: [], loadout: priv.loadout, diy: r.diy }, { list: CHESS_SECTIONS, absent: ['garrison', 'actions'] });
+    const blocks = mountVNodes(preact, ChessDetail, { chess: r.chess, piece, editable: false, bonds: [], loadout: priv.loadout, diy: r.diy }, { list: SECTIONS_WITH_SKIN, absent: ['garrison', 'actions'] });
     const head = blocks.find((b) => b.key === 'head');
     assert.equal([...walk(head)].find((v) => hasClass(v, 'dtag-diy'))?.props.children, '自选');
     assert.equal([...walk(head)].find((v) => hasClass(v, 'dhead__name')).props.children, DATA.backups.units[SIEGE].name);

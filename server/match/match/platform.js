@@ -129,13 +129,7 @@ export class MatchPlatform {
     return res;
   }
 
-  /**
-   * 干员皮肤 (docs/SKINS.md): replace a player's skin choices — `{ [chessId]: skinId }`. Unlike the loadout there is
-   * NO phase gate: a skin is cosmetic and public, so it may change at any time (the lobby accepts it in any phase too,
-   * and PlayerState.setSkins re-checks it against this match's data). Broadcasts `m.public`, because teammates see it.
-   * @param {string} playerId
-   * @param {Record<string, string> | null} skins
-   * @returns {{ ok: true } | { error: string, detail?: string }}
+  /** A human's socket dropped: the seat is kept and the AI plays on until they come back (or the grace expires). */
   onDisconnect(playerId) {
     const ps = this.players.get(playerId);
     if (!ps || ps.isBot || this.disposed) return;

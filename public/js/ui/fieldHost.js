@@ -98,8 +98,10 @@ export function hudBands(kind, size, opts) {
     safeTop = Math.max(0, (hud?.top || 0) - oy);
     if (folded) {
       if (hud && hud.bottom - oy > 0) safeBottom = Math.max(0, h - (hud.bottom - oy));
-      corner = cornerBand(h, oy);
     }
+    // the corner band is measured in EVERY state, folded or not: with the shop bar open the chat toggle sits above it, and
+    // the band has to clear that tap target too (this fork's rule — upstream only asks when the bar is folded)
+    corner = cornerBand(h, oy);
   } catch { /* ignore */ }
   const bottom = folded
     ? Math.max(safeBottom + rem * HUD_REM.shopTabTop + HUD_REM.shopTabBorderPx, corner || safeBottom + rem * HUD_REM.cornerTop)

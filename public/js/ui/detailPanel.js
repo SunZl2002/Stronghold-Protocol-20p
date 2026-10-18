@@ -469,7 +469,9 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
   // with what this browser draws. What it does need is that the card is OURS: on a teammate's unit `foreignSkin`
   // carries THEIR skin, and this store has no say over it.
   const ownCard = !foreignSkin && !!(c?.chessId || c?.id);
-  blocks.skin = ownCard ? html`<${SkinSection} key="skin" chess=${c} />` : null;
+  // upstream 0.3.1's SkinSection takes the operator's charId (a choice is keyed by operator, one entry covering the normal
+  // piece, its elite and a 自选 slot), not the chess record this card holds
+  blocks.skin = ownCard ? html`<${SkinSection} key="skin" charId=${c.charId} />` : null;
   blocks.garrison = garrisons.length > 1
     ? garrisons.map(garrison => html`<${GarrisonBlock} key=${garrison.garrisonId} garrison=${garrison} m=${m} />`)
     : garrisons[0] ? html`<${GarrisonBlock} key="garrison" garrison=${garrisons[0]} m=${m} />` : null;

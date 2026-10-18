@@ -52,6 +52,9 @@ const { HARMONY_BOND: SERVER_HARMONY_BOND } = await import('../../server/match/b
 const { makeMatch, give, giveItem, legalTileFor } = await import('../match/harness.js');
 const { tileKey } = await import('../../server/match/board.js');
 
+// this fork's card adds the 皮肤 picker after 技能, so the positional list that names its blocks says so
+const SECTIONS_WITH_SKIN = ['head', 'garrison', 'trait', 'stats', 'skill', 'skin', 'module', 'equip', 'talents', 'actions'];
+
 const items = load('items.json');
 const bonds = load('bonds.json');
 const chess = load('chess.json');
@@ -185,7 +188,7 @@ describe('§21.26 1 — 变形同构体 on the cards', () => {
 
   test('a wearer\'s card (装备): the 变形同构体 row lists the pairings with the worn one highlighted (生效中); the bond item\'s row says it', () => {
     const piece = { uid: 1, kind: 'chess', id: WEARER, golden: false, tier: 1, items: [{ uid: 2, id: ISO }, { uid: 3, id: HAMMER }] };
-    const blocks = mountVNodes(preact, ChessDetail, { chess: chess[WEARER], piece, editable: false, bonds: [], offBonds: funny, loadout: null }, { list: CHESS_SECTIONS, absent: ['module', 'actions'] });
+    const blocks = mountVNodes(preact, ChessDetail, { chess: chess[WEARER], piece, editable: false, bonds: [], offBonds: funny, loadout: null }, { list: SECTIONS_WITH_SKIN, absent: ['module', 'actions'] });
     const equip = blocks.find((b) => b?.key === 'equip');
     const rows = byClass(equip, 'dmorph__row');
     assert.equal(rows.length, 14);
@@ -198,14 +201,14 @@ describe('§21.26 1 — 变形同构体 on the cards', () => {
     assert.ok(hasClass(grant[0], 'is-worn'));
     assert.match(textOf(grant[0]), /与变形同构体一同装备时，携带者视为【维多利亚】成员.*生效中/);
     // worn with a bond the mode switches off: 已搭配 + 本局禁用, never 生效中
-    const lat = mountVNodes(preact, ChessDetail, { chess: chess[WEARER], piece: { ...piece, items: [{ uid: 2, id: ISO }, { uid: 4, id: LATERANO_CLIP }] }, editable: false, bonds: [], offBonds: funny, loadout: null }, { list: CHESS_SECTIONS, absent: ['module', 'actions'] });
+    const lat = mountVNodes(preact, ChessDetail, { chess: chess[WEARER], piece: { ...piece, items: [{ uid: 2, id: ISO }, { uid: 4, id: LATERANO_CLIP }] }, editable: false, bonds: [], offBonds: funny, loadout: null }, { list: SECTIONS_WITH_SKIN, absent: ['module', 'actions'] });
     const latRow = byClass(lat.find((b) => b?.key === 'equip'), 'dmorph__row').find((r) => hasClass(r, 'is-worn'));
     assert.equal(latRow.props['data-bond'], 'lateranoShip');
     assert.match(textOf(latRow), /已搭配/);
     assert.match(textOf(latRow), /本局禁用/);
     assert.doesNotMatch(textOf(latRow), /生效中/);
     // a teammate's unit / a popup's 同构 row (no own piece): the same, from the item ids it carries
-    const ro = mountVNodes(preact, ChessDetail, { chess: chess[WEARER], piece: null, editable: false, bonds: [], offBonds: null, loadout: null, unitItems: [HAMMER_SHUDDER, ISO_B] }, { list: CHESS_SECTIONS, absent: ['module', 'actions'] });
+    const ro = mountVNodes(preact, ChessDetail, { chess: chess[WEARER], piece: null, editable: false, bonds: [], offBonds: null, loadout: null, unitItems: [HAMMER_SHUDDER, ISO_B] }, { list: SECTIONS_WITH_SKIN, absent: ['module', 'actions'] });
     assert.deepEqual(byClass(ro.find((b) => b?.key === 'equip'), 'dmorph__row').filter((r) => hasClass(r, 'is-worn')).map((r) => r.props['data-bond']), ['victoriaShip']);
   });
 
