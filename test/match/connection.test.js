@@ -6,11 +6,16 @@ import { Match } from '../../server/match/Match.js';
 import { StubMatch } from '../../server/match/StubMatch.js';
 import { DATA, makeMatch, checkInvariants, give, giveItem, chessOfTier } from './harness.js';
 import { bossPoolHp } from '../../server/match/finalAssault.js';
+import { DELAYS } from '../../server/match/match/common.js';
 
 const STATUSES = ['acting', 'ready', 'deciding', 'combat', 'done', 'helping', 'left', 'dead'];
 
 test('public throttling starts at broadcast time even when building the previous snapshot was delayed', () => {
-  let now = 100;
+  // The interval is DELAYS.PUBLIC_THROTTLE: this fork deliberately set it to 125 ms (公共状态广播频率提升至8hz) where
+  // upstream uses 100 ms, so the timeline is derived from the constant instead of hard-coded. The property under test —
+  // the window starts at the BROADCAST, not when the snapshot started building — holds for either value.
+  const T = DELAYS.PUBLIC_THROTTLE;
+  let now = T; // the first call is outside any window
   let revision = 0;
   const sent = [];
   const timers = [];
@@ -28,12 +33,13 @@ test('public throttling starts at broadcast time even when building the previous
     _maybeSendPublic: Match.prototype._maybeSendPublic,
   };
   match._maybeSendPublic(false);
-  now = 200;
+  const first = now; // the broadcast lands 16 ms after the build started
+  now = first + T - 1; // one millisecond inside the window
   match._maybeSendPublic(false);
-  assert.deepEqual(sent, [116], 'the second frame waits for the full interval after the first broadcast');
+  assert.deepEqual(sent, [first], 'the second frame waits for the full interval after the first broadcast');
   now = timers[0].at;
   timers[0].fn();
-  assert.deepEqual(sent, [116, 216]);
+  assert.deepEqual(sent, [first, now]);
 });
 
 test('constructor validation mirrors the stub; start() sends the first m.public and one m.private per human', () => {
