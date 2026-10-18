@@ -11,9 +11,10 @@ import { DELAYS } from '../../server/match/match/common.js';
 const STATUSES = ['acting', 'ready', 'deciding', 'combat', 'done', 'helping', 'left', 'dead'];
 
 test('public throttling starts at broadcast time even when building the previous snapshot was delayed', () => {
-  // The interval is DELAYS.PUBLIC_THROTTLE: this fork deliberately set it to 125 ms (公共状态广播频率提升至8hz) where
-  // upstream uses 100 ms, so the timeline is derived from the constant instead of hard-coded. The property under test —
-  // the window starts at the BROADCAST, not when the snapshot started building — holds for either value.
+  // The interval is DELAYS.PUBLIC_THROTTLE. This fork raised it from upstream's 100 ms to 125 (8 Hz) and then to 200, the
+  // "normal updates have a 200 ms minimum gap" the client contract states (upstream's realtime test asserts it): with the
+  // 0.3.1 public view, two changes inside one 125 ms window are ordinary. The timeline is derived from the constant, so the
+  // property under test — the window starts at the BROADCAST, not when the snapshot started building — holds for any value.
   const T = DELAYS.PUBLIC_THROTTLE;
   let now = T; // the first call is outside any window
   let revision = 0;
@@ -374,7 +375,7 @@ test('m.public follows player-state changes (shop level, board count, bonds) wit
   const ps = h.ps('p_0');
   ps.funds = 50;
   m.handle('p_0', { t: 'g.levelUp' });
-  h.sched.advance(150);
+  h.sched.advance(DELAYS.PUBLIC_THROTTLE + 50);
   assert.equal(h.lastBc('m.public').players[0].shopLevel, 2);
   m.dispose();
 });
