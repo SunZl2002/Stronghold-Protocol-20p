@@ -9,6 +9,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
+import { openSettings } from '../helpers/announcements.js';
 
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const ENABLED = process.env.SP_E2E === '1' && existsSync(CHROME);
@@ -84,8 +85,7 @@ describe('文字大小 on a phone (headless Chrome)', { skip: !ENABLED && 'set S
     await page.type('input', '文字大小');
     await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => /开始/.test(b.textContent))?.click());
     await page.waitForSelector('.lobby-screen', { timeout: 15000 });
-    await page.click('.lobby-screen [data-testid="settings-btn"]');
-    await page.waitForSelector('.modal .set-list', { timeout: 5000 });
+    assert.ok(await openSettings(page), 'the settings dialog opens (this fork may have a 公告 modal in the way)');
     await sleep(200);
 
     const small = await modalMetrics(page);
@@ -123,8 +123,7 @@ describe('文字大小 on a phone (headless Chrome)', { skip: !ENABLED && 'set S
     assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('sp.pref.settings')).textSize), 'xl');
     await page.reload({ waitUntil: 'networkidle0' });
     await page.waitForSelector('.lobby-screen', { timeout: 15000 });
-    await page.click('.lobby-screen [data-testid="settings-btn"]');
-    await page.waitForSelector('.modal .set-list', { timeout: 5000 });
+    assert.ok(await openSettings(page), 'the settings dialog opens (this fork may have a 公告 modal in the way)');
     const again = await modalMetrics(page);
     assert.equal(again.step, '特大', 'the choice survives a reload');
     assert.equal(again.root, 40);
