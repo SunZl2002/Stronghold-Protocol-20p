@@ -37,8 +37,8 @@ export class InPageSimHost {
   progress() { return this.sim.spec.battleProgress(this.battle); }
   uniteLeft() { return this.sim.spec.uniteLeft(this.battle); }
   /**
-   * @returns {{ result: any, unfitted: boolean }} unfitted: this fork's over-large result - sent compacted but NOT
-   * fitted, and therefore delivered as a body-less b.yield frame (the server then asks for it in pieces).
+   * The compacted result. `compactResult()` keeps upstream's contract (the result object itself — callers read
+   * `.errors`, `.total` straight off it); whether this fork refused to FIT it is reported through `resultUnfitted`.
    */
   compactResult(options) {
     const s = this.sim.spec;
@@ -49,12 +49,13 @@ export class InPageSimHost {
       || Object.values(raw.perPlayer || {}).some((p) => (p?.leaked?.length || 0) > RESULT_LIMITS.leaked)
       || (raw.unspawned?.length || 0) > RESULT_LIMITS.unspawned;
     const r = s.compactResult(raw);
-    if (tooManyEntries) return { result: r, unfitted: true };
+    if (tooManyEntries) { this.resultUnfitted = true; return r; }
     const fitted = typeof s.fitResult === 'function' ? s.fitResult(r, options) : r;
     // fitResult answers null when even the compacted form cannot meet the frame budget (a result that fits the character
     // count but exceeds 60 KiB of UTF-8): that is the other half of this fork's yield condition.
-    if (!fitted) return { result: r, unfitted: true };
-    return { result: fitted, unfitted: false };
+    if (!fitted) { this.resultUnfitted = true; return r; }
+    this.resultUnfitted = false;
+    return fitted;
   }
   unitStats(id) {
     const u = this.battle?.unitById?.(id);
@@ -137,7 +138,10 @@ export class WorkerSimHost {
   async step(n, opts) { return this.accept(await this.rpc('step', [n, opts])); }
   progress() { return this.packet.progress; }
   uniteLeft() { return this.packet.left; }
-  compactResult() { return { result: this.packet.result, unfitted: !!this.packet.unfitted }; }
+  compactResult() {
+    this.resultUnfitted = !!this.packet.unfitted;
+    return this.packet.result;
+  }
   unitStats(id) {
     if (!this.stopped && !this.statsPending.has(id)) {
       this.statsPending.add(id);

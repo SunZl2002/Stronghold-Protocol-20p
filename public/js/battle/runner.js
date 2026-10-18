@@ -529,7 +529,8 @@ export function createBattleRunner(deps) {
       let result = null;
       let unfitted = false;
       try {
-        ({ result, unfitted } = e.host.compactResult({ bossLike: bossLike(e), battleId: e.battleId }));
+        result = e.host.compactResult({ bossLike: bossLike(e), battleId: e.battleId });
+        unfitted = !!e.host.resultUnfitted;
       } catch (err) { console.warn('[runner] result failed', err); recordError('runner', err, 'result failed'); }
       // unfitted is this fork's over-large result (simHost.compactResult): it goes out as a body-less b.yield frame
       // instead of a b.result, exactly as before 0.3.0's host refactor - where the removed `wire` carried that decision.
