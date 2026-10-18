@@ -43,6 +43,16 @@ export class MatchInfra {
   scaled(ms) { return Math.max(0, Math.round(ms * this.timerScale)); }
 
   /**
+   * The GAME clock: wall time unless the match is frozen (pause / emergency), in which case it stops. A caller may
+   * replace `this.sched` with a narrow stub that has `now()` only (test harnesses and the journal replay do), so the
+   * fallback keeps that clock readable instead of throwing inside a guarded callback.
+   */
+  gameNow() {
+    const s = this.sched;
+    return typeof s.gameNow === 'function' ? s.gameNow() : s.now();
+  }
+
+  /**
    * Set the phase deadline (seconds; null/0 ⇒ untimed) and its timeout callback. `silent`: the timer runs but no
    * deadline is published (m.public.deadline 0 ⇒ no countdown) — the fixed presentation steps of a solo match.
    */
@@ -69,7 +79,7 @@ export class MatchInfra {
     const ms = this.scaled(seconds * 1000);
     // this fork's phase deadline is on the GAME clock (what pause / emergency freeze stop); the real timer still runs on
     // wall time. upstream 0.3.1 adds the test hook: a held phase must not survive the timer.
-    this.deadline = silent ? 0 : this.sched.gameNow() + ms;
+    this.deadline = silent ? 0 : this.gameNow() + ms;
     this._phaseTimer = this.later(ms, () => { this._phaseTimer = null; if (this.test === true) { this._testArmed = null; this._testHeld = null; } fn(); });
     if (this.test === true) this._testArmed = { seconds, fn, silent: !!silent };
   }

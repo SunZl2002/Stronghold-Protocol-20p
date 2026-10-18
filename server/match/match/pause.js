@@ -14,7 +14,7 @@ export class MatchPause {
       if (this.emergencyFrozen) return OK;
       this.sched.freeze();
       this.emergencyFrozen = true;
-      this.emergencyFrozenAt = this.sched.gameNow();
+      this.emergencyFrozenAt = this.gameNow();
       this.emergencyReason = String(reason || 'bandwidth');
     } else {
       if (!this.emergencyFrozen) return OK;
@@ -90,7 +90,7 @@ export class MatchPause {
     const battlePhase = this.phase === PHASE.COMBAT || this.phase === PHASE.FINAL_ASSAULT || this.phase === PHASE.HIDDEN_CORE;
     if (!battlePhase || this._finalEnding || !this.fields.some((f) => f.live && !f.done)) return fail(ERR.WRONG_PHASE, 'no battle running');
     this.paused = true;
-    this._pausedAt = this.sched.gameNow();
+    this._pausedAt = this.gameNow();
     for (const f of this.fields) {
       if (!f.cc) continue;
       if (f.deadlineTimer) { this.cancel(f.deadlineTimer); f.deadlineTimer = null; f.rearmDeadline = true; }
@@ -104,7 +104,7 @@ export class MatchPause {
   /** End a solo pause: every clock and deadline moves on by the paused time (no-op when not paused). */
   _resume() {
     if (!this.paused) return;
-    const d = Math.max(0, this.sched.gameNow() - this._pausedAt);
+    const d = Math.max(0, this.gameNow() - this._pausedAt);
     this.paused = false;
     this._pausedAt = 0;
     this.pausedMs += d;
@@ -129,12 +129,12 @@ export class MatchPause {
   /** The battle phase is over: drop the pause without shifting anything (its timers are gone). */
   _clearPause() {
     if (!this.paused) return;
-    this.pausedMs += Math.max(0, this.sched.gameNow() - this._pausedAt);
+    this.pausedMs += Math.max(0, this.gameNow() - this._pausedAt);
     this.paused = false;
     this._pausedAt = 0;
     this.markPublic();
   }
 
   /** The field clocks' "now": frozen at the pause instant while paused. */
-  _clockNow() { return this.paused ? this._pausedAt : this.sched.gameNow(); }
+  _clockNow() { return this.paused ? this._pausedAt : this.gameNow(); }
 }

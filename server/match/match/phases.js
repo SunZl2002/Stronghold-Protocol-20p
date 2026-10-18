@@ -183,7 +183,7 @@ export class MatchPhases {
     g.turnSeconds = g.untimed ? 0 : this.bandTurnMs() / 1000;
     if (!g.untimed) {
       const ms = this.bandTurnMs();
-      g.turnDeadline = this.sched.gameNow() + ms;
+      g.turnDeadline = this.gameNow() + ms;
       g.timer = this.later(ms, () => {
         if (this.phase !== PHASE.BAND_DRAFT || this.draft !== d || token !== g.token) return;
         const pid = this.draftTurn(g.playerIds[0]);

@@ -16,6 +16,13 @@ export class FreezeScheduler {
   now() { return this.source.now(); }
   gameNow() { return this.frozen ? this.frozenAt : this.now(); }
 
+  // The wrapper is transparent for the capabilities a scheduler may offer beyond the timer API. A virtual scheduler's
+  // `runUntil` / `runNext` / `advance` drive it directly (tests and the test console use them), and upstream 0.3.1 hands
+  // `m.sched` to such a driver as-is — so without these forwards a match under this wrapper cannot be stepped.
+  runUntil(...args) { return this.source.runUntil?.(...args); }
+  runNext(...args) { return this.source.runNext?.(...args); }
+  advance(...args) { return this.source.advance?.(...args); }
+
   _create(fn, ms, every = 0) {
     if (this.disposed || typeof fn !== 'function') return null;
     const value = Number(ms);
