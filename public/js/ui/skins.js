@@ -231,11 +231,9 @@ export function chosenSkin(charId, entries = null) {
   if (!skinsVisible()) return null;
   const id = str(charId);
   if (!id) return null;
-  const playable = availableSkins(id).filter((x) => !x.own && x.playable);
   const want = str((entries || skinsStore.get()[SKINS_KEY] || {})[id]);
-  // 一键装备皮肤 (this fork, D037): a browser that never chose wears the first playable skin of every operator
-  if (!want) return skinsAutoEquip() && playable.length ? playable[0].id : null;
-  return playable.some((x) => x.id === want) ? want : null;
+  if (!want) return null;
+  return availableSkins(id).some((x) => !x.own && x.playable && x.id === want) ? want : null;
 }
 
 /** The files the picker reads: the composed manifest (the skins, and the 默认 tile's own art). */
@@ -268,7 +266,32 @@ const policyStore = createStore({ v: 0 });
 export function bumpSkinsPolicy() { policyStore.set('v', (policyStore.get().v || 0) + 1); }
 export const useSkinsPolicy = () => policyStore.get().v;
 
-/** How many operators carry a stored choice (the settings dialog shows the dress's extent). Writes nothing. */
+/** How many operators carry a stored choice (the settings dialog shows the dress's extent). */
 const dressedCount = () => Object.keys(skinsStore.get()[SKINS_KEY] || {}).length;
+
+/**
+ * 一键装备皮肤 (D037): give every operator that has no choice yet the first appearance it can actually wear. Writes the
+ * store, so `chosenSkin` keeps meaning "what this browser chose" — the picker's 默认 tile still shows for an operator
+ * whose skins are all art-only. Returns how many operators the dress added.
+ * @returns {number}
+ */
+export function autoEquipSkins() {
+  if (!skinsVisible() || !skinsAutoEquip()) return 0;
+  const chars = data.get('assets')?.chars;
+  if (!chars || typeof chars !== 'object') return 0;
+  const current = skinsStore.get()[SKINS_KEY] || {};
+  const next = { ...current };
+  let added = 0;
+  for (const charId of Object.keys(chars)) {
+    if (next[charId]) continue;
+    const first = availableSkins(charId).find((x) => !x.own && x.playable);
+    if (first) { next[charId] = first.id; added++; }
+  }
+  if (added) setSkins(next);
+  return added;
+}
+
+/** Settings → 一键装备皮肤 switched off: the dress stops, and the stored choices stay (turning it back on re-seeds). */
 export function clearDefaultSkins() { return dressedCount(); }
-export function restoreDefaultSkins() { return dressedCount(); }
+/** Settings → 一键装备皮肤 switched back on: dress the operators that still have no choice. */
+export function restoreDefaultSkins() { return autoEquipSkins(); }

@@ -136,20 +136,6 @@ export class MatchPlatform {
    * @param {string} playerId
    * @param {Record<string, string> | null} skins
    * @returns {{ ok: true } | { error: string, detail?: string }}
-   */
-  setSkins(playerId, skins) {
-    if (this.emergencyFrozen) return fail(ERR.SERVER_EMERGENCY);
-    const ps = this.players.get(playerId);
-    if (!ps || ps.isBot || ps.left) return fail(ERR.NOT_IN_ROOM);
-    if (this.disposed || this.ended) return fail(ERR.WRONG_PHASE, 'no skins after the match ended');
-    let res = OK;
-    this.guard(() => {
-      ps.setSkins(skins);
-      this.markPublic();
-    });
-    return res;
-  }
-
   onDisconnect(playerId) {
     const ps = this.players.get(playerId);
     if (!ps || ps.isBot || this.disposed) return;
