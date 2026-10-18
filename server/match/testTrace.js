@@ -110,6 +110,8 @@ export function installTestTrace(m, opts) {
   m.sched = {
     virtual: scheduler.virtual, instant: scheduler.instant,
     now: () => eventNow ?? scheduler.now(),
+    // this fork's phase deadline reads the GAME clock; a traced match is never frozen, so the journal's clock is it
+    gameNow: () => eventNow ?? scheduler.now(),
     setTimeout: (fn, ms) => register('setTimeout', fn, ms),
     setInterval: (fn, ms) => register('setInterval', fn, ms),
     clearTimeout: (h) => scheduler.clearTimeout(h),

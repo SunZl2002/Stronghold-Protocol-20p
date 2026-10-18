@@ -69,14 +69,14 @@ test('观战：b.start 的 spec 带着每个玩家自己装备的皮肤（用户
 
   const pick = deployableChess(m);
   assert.ok(pick, 'the pool has a chess with a skin');
-  const { chessId, skinId } = pick;
+  const { chessId, charId, skinId } = pick;
 
   // 每个真人给自己那颗棋子装上同一款皮肤（显式设定，不依赖 D037 的默认取舍）
   const got = [];
   for (const pid of ['p_0', 'p_1', 'p_2']) {
     const ps = h.ps(pid);
-    ps.setSkins({ [chessId]: skinId });
-    if (ps.skins[chessId] === skinId) got.push(pid);
+    ps.setSkins({ [charId]: skinId });
+    if (ps.skins[charId] === skinId) got.push(pid);
   }
   assert.ok(got.length > 0, `setSkins accepted for ${got.join(', ')}`);
 
@@ -143,7 +143,7 @@ test('观战/联防：两个玩家穿不同皮肤时，spec 里各是各的（�
     if (rec.isGolden || rec.visible === false || rec.isHidden || rec.isDiy) continue;
     const skins = skinsData.chars?.[rec.charId];
     if (!Array.isArray(skins) || !skins.length) continue;
-    picks.push({ chessId: id, skinId: skins[0].id });
+    picks.push({ chessId: id, charId: rec.charId, skinId: skins[0].id });
     if (picks.length === 2) break;
   }
   assert.equal(picks.length, 2, 'two pool chess with skins');
@@ -152,7 +152,7 @@ test('观战/联防：两个玩家穿不同皮肤时，spec 里各是各的（�
   const set = [];
   for (const [i, pid] of ['p_0', 'p_1'].entries()) {
     const ps = h.ps(pid);
-    ps.setSkins({ [picks[i].chessId]: picks[i].skinId });
+    ps.setSkins({ [picks[i].charId]: picks[i].skinId });
     const piece = give(m, ps, picks[i].chessId);
     for (const [row, col] of [[9, 4], [9, 5], [9, 3], [8, 4], [13, 4], [13, 5], [8, 5], [13, 3]]) {
       if (m.handle(pid, { t: 'g.move', uid: piece.uid, to: { area: 'board', row, col } }).ok) { set.push({ pid, ...picks[i] }); break; }
