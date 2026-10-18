@@ -62,9 +62,30 @@ consume-on-equip built-ins（合并前就失败：`h.sched.runUntil is not a fun
 | `test/content` | **2346 / 0** | ✅ |
 | `test/sim` | **923 / 0** | ✅ |
 | `test/render` | **875 / 0** | ✅ |
-| `test/match` | 1097 / 13 | 见下 |
+| `test/match` | **1105 / 6** | 见下（从 1097/13 修上来）|
 | `test/studio` | **83 / 6** | 从 52/37 修上来的（`index.js` 漏传 `studio`）|
-| `test/plugins` | 267 / 9 | 见下 |
+| `test/plugins` | **268 / 8** | 从 264/12 修上来 |
+
+### ⚠️ 待查：`co-op spectator removed by the host while the match runs`（`lobby-integration.test.js:208`）
+
+**探针给出的硬事实**（用一份临时副本把断言前后的值都打出来，已删除）：
+
+```
+移除 s1 后：refilled.spectators = [["Spec1", true], ["Spec2", true]]
+而 s2 = p_49b…, s3 = p_142…
+```
+
+即：`removeSpectator` **生效了**（当时 `spectators.length === 1` 的断言通过了），
+`Spec3` 也 `room.spectate` 成功了，但随后服务端广播的 `room.state` 里**又是 `[Spec1, Spec2]`** ——
+被移除的 `Spec1` 回到了列表里，`Spec3` 反而不在。
+
+**已排除**：`removeMember` 会清 `session.roomCode`（lobby.js:1873）；`freeSpectatorSeat` 的 `splice`
+与上游**完全一致**（只有多一行 `chat.forgetPlayer`）；`TestClient.waitFor` 是**消费式**的，
+所以这不太可能是读到旧帧。
+
+**下一个该看**：`s1` 在 `g.watch` 之后是否被**重连逻辑**（`startGrace` / resume）按旧的 `roomCode` 复原；
+或者 `spectate` 的 `roomOf(session)` 在 session 已被移除后仍把它算作「已在该房间」。
+一行 `console.log` 打在 `spectate()` / `freeSpectatorSeat` 的入口就能定位。
 
 ### 已修：`index.js` 漏传三个上游选项（studio 37 个失败的根因）
 
