@@ -2141,8 +2141,6 @@ export class Lobby {
       if (state.inMatch && !prev?.inMatch) event('matchStarted');
       room.trustedPrevious = state;
     }
-    const data = encode(room.toState());
-    for (const session of this.memberSessions(room)) sendRaw(session.ws, data);
   }
 
   sendState(room, session) {
