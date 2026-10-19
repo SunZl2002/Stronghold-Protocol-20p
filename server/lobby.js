@@ -1569,6 +1569,12 @@ export class Lobby {
         // notice.
         if (this.plugins?.hasNotices?.()) info.content.notices = true;
       }
+      // The merge dropped this return: every `welcome` went out without a single one of these fields, so no client had the
+      // server's content identity (`content.vanilla`). Without it `csAccepted()` (public/js/battle/runner.js) cannot tell
+      // that a field's spec is the room's content, the client refuses authority, and it never reports a b.result — the
+      // server then waits out the field plus RESULT_GRACE_MS (15 s) and re-simulates the whole battle before settling.
+      // That was the "each round takes ages to settle" report.
+      return info;
   }
 
   // ---------------------------------------------------------------------------------------------------
