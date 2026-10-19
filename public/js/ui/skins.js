@@ -281,7 +281,9 @@ const dressedCount = () => Object.keys(skinsStore.get()[SKINS_KEY] || {}).length
  * @returns {number}
  */
 export function autoEquipSkins() {
-  if (!skinsVisible() || !skinsAutoEquip()) return 0;
+  // The two switches are independent: 一键装备皮肤 dresses YOUR operators, 显示其他玩家的皮肤 is about what other
+  // players' units look like on screen. Requiring both made the first do nothing whenever the second was off.
+  if (!skinsAutoEquip()) return 0;
   const chars = data.get('assets')?.chars;
   if (!chars || typeof chars !== 'object') return 0;
   const current = skinsStore.get()[SKINS_KEY] || {};
