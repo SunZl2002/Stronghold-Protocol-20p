@@ -138,6 +138,7 @@
 // working. createFieldView stays here: it is one closure over the view's own state.
 
 import { GEO, ANIM } from '../../../shared/constants.js';
+import { skinsVisible } from '../ui/skins.js';
 import { fxForm } from '../../../shared/protocol.js';
 import { Camera, presetCamera, lerpCamera, easeInOutCubic, pickTile, normRect } from './projection.js';
 import { SnapshotBuffer, frameTime } from './interp.js';
@@ -1562,7 +1563,9 @@ export async function createFieldView(host, options = {}) {
   };
   const playerSkins = new Map();
   let skinSelectionKey = null;
-  const shownSkin = (info) => skinOf(info, ctx.myPlayerId, settings.otherSkins);
+  // 设置「显示皮肤」 is the wider switch: off means this browser draws every operator's own art, the battlefield's
+  // units included. `otherSkins` only governs OTHER seats' pieces, so it alone left the field dressed.
+  const shownSkin = (info) => (skinsVisible() ? skinOf(info, ctx.myPlayerId, settings.otherSkins) : null);
 
   /**
    * Register a battle unit's info (a 'spawn' event, `m.field` / fieldMeta units) and keep its view honest: a changed
