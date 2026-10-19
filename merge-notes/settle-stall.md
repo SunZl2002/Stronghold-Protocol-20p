@@ -1,4 +1,26 @@
-# 结算卡住（SETTLE 之后不回 PREP）：到 2026-10-19 为止的全部证据
+# 结算卡住（SETTLE 之后不回 PREP）
+
+> **已解决（2026-10-19）**：根因是 `Lobby.welcomeInfo()` 少了 `return info;`（合并时丢的），每个 `welcome` 都是空的，
+> 客户端因此拿不到内容标识 → 拒绝权威 → 从不发送 `b.result` → 服务端等满时限后重算。
+> 修复提交 `7e866198`。下面的记录保留，作为「这一类 bug 怎么查」的过程材料。
+
+## 真正的根因链
+
+```
+welcomeInfo() 没有 return  →  welcome 里没有 content
+  →  客户端 store.content = null  →  vanillaCs() = null
+  →  csAccepted() = false  →  e.authoritative = false
+  →  finished() 的发送分支被跳过  →  从不发 b.result
+  →  服务端等「战场时长 + RESULT_GRACE_MS(15s)」
+  →  server takeover … (timeout)  →  服务端重算整场战斗  →  结算慢
+```
+
+**关键教训**：这条链上从未出现任何异常或日志 —— 每一环都是「合法地跳过」。最终定位靠的是**在两端的入口各打一行日志**
+（`finished()` / `deliver()` / `_onResult` 全静默 → 再往上游追到 `csAccepted` → 再追到 `welcome`）。
+
+---
+
+以下是最初的现象记录与排查过程（历史）。
 
 ## 现象
 
