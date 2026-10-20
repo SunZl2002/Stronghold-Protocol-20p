@@ -138,7 +138,6 @@
 // working. createFieldView stays here: it is one closure over the view's own state.
 
 import { GEO, ANIM } from '../../../shared/constants.js';
-import { skinsVisible } from '../ui/skins.js';
 import { fxForm } from '../../../shared/protocol.js';
 import { Camera, presetCamera, lerpCamera, easeInOutCubic, pickTile, normRect } from './projection.js';
 import { SnapshotBuffer, frameTime } from './interp.js';
@@ -798,7 +797,7 @@ export async function createFieldView(host, options = {}) {
       // the default model until the first battle (the snapshot's UnitInfo.skin), while a teammate scouting the same
       // board already saw the skin: the own pieces are all this player's, so no 设置「显示其他玩家的皮肤」 applies here.
       // 显示皮肤 off: the prep board draws the operator's own model too (this line used to take piece.skin straight)
-      skin: skinsVisible() ? (piece.skin || null) : null,
+      skin: settings?.skinsOn === false ? null : (piece.skin || null),
       ...(si ? { standInFor: si.standInFor } : null),
       ...(dr ? { diy: { charId: pick.charId, skillIndex: pick.skillIndex ?? null, uniEquipId: pick.uniEquipId ?? null } } : null),
     };
@@ -1566,7 +1565,7 @@ export async function createFieldView(host, options = {}) {
   let skinSelectionKey = null;
   // 设置「显示皮肤」 is the wider switch: off means this browser draws every operator's own art, the battlefield's
   // units included. `otherSkins` only governs OTHER seats' pieces, so it alone left the field dressed.
-  const shownSkin = (info) => (skinsVisible() ? skinOf(info, ctx.myPlayerId, settings.otherSkins) : null);
+  const shownSkin = (info) => (settings?.skinsOn === false ? null : skinOf(info, ctx.myPlayerId, settings.otherSkins));
 
   /**
    * Register a battle unit's info (a 'spawn' event, `m.field` / fieldMeta units) and keep its view honest: a changed
