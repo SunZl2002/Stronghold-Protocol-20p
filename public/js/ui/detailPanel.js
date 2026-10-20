@@ -39,7 +39,7 @@ import { html, Icon, TierChip, MicroLabel, Button, confirmDialog, useTicker } fr
 import { Img, RichText, UnitThumb, BondGlyph, GIcon, diyToken } from './gameComponents.js';
 import { attackInterval, rangeGridBox, fmtNum, tileKey, chessLoadout, nextThreshold, bondTier, briefingBondTip, pieceBondIds, grantedBonds, morphPairings, ownStandIn, standInOf, standInLoadout, standInLabel, standInTip, standInForText, ownDiyRecord, ownDiyPick, diyRecordFor, pickGetter, unitPick, unitCultivation } from './gameLogic.js';
 import { chessPortraitUrl, chessSkinPortraitUrl, skillIconUrl, skillRecordIconUrl, profIconUrl, subProfIconUrl, itemIconUrl, enemyIconUrl, tokenAvatarUrl, factionIconUrl, uiUrl, moduleTypeIconUrl } from './assetUrls.js';
-import { useSkin } from './skinChoice.js';
+import { useSkin, skinsEnabled } from './skinChoice.js';
 import { abilityRows } from './abilityLines.js';
 import { data } from '../data.js';
 import { attackRangeGrid } from '../../../shared/loadoutRecord.js';
@@ -471,7 +471,8 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
   const ownCard = !foreignSkin && !!(c?.chessId || c?.id);
   // upstream 0.3.1's SkinSection takes the operator's charId (a choice is keyed by operator, one entry covering the normal
   // piece, its elite and a 自选 slot), not the chess record this card holds
-  blocks.skin = ownCard ? html`<${SkinSection} key="skin" charId=${c.charId} />` : null;
+  // 设置「显示皮肤」 off: the card draws the operator's own art, so it does not offer a picker it will not show.
+    blocks.skin = ownCard && skinsEnabled() ? html`<${SkinSection} key="skin" charId=${c.charId} />` : null;
   blocks.garrison = garrisons.length > 1
     ? garrisons.map(garrison => html`<${GarrisonBlock} key=${garrison.garrisonId} garrison=${garrison} m=${m} />`)
     : garrisons[0] ? html`<${GarrisonBlock} key="garrison" garrison=${garrisons[0]} m=${m} />` : null;

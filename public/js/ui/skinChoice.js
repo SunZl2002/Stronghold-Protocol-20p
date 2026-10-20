@@ -6,7 +6,7 @@
 // Reactivity: `chosenSkin` reads the skins store, so calling this during a render re-runs that component when the choice
 // changes (the reason the call sites have a line like this at all — a thumbnail otherwise keeps the art it first drew).
 
-import { chosenSkin, useSkinsPolicy } from './skins.js';
+import { chosenSkin, useSkinsPolicy, skinsVisible } from './skins.js';
 import { getChess } from '../data.js';
 
 /**
@@ -21,3 +21,6 @@ export function useSkin(chessId) {
   const charId = rec && typeof rec.charId === 'string' ? rec.charId : null;
   return { skinId: charId ? chosenSkin(charId) : null };
 }
+
+/** The display rule itself (设置「显示皮肤」): off means no surface draws a skin, so none offers one either. */
+export function skinsEnabled() { return skinsVisible(); }
