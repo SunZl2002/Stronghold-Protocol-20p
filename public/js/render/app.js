@@ -2263,6 +2263,12 @@ export async function createFieldView(host, options = {}) {
         settings.otherSkins = s.otherSkins;
         refreshSkins();
       }
+      // 设置「显示皮肤」 is the wider switch (every operator's own art, this page's pieces included): it reached the view
+      // through this very call and was dropped, so the field kept the models it had already built.
+      if (typeof s.skinsOn === 'boolean' && s.skinsOn !== settings.skinsOn) {
+        settings.skinsOn = s.skinsOn;
+        refreshSkins();
+      }
       if (s.quality === 'high' || s.quality === 'medium' || s.quality === 'low') settings.quality = s.quality;
       if (typeof s.officialFx === 'string' && s.officialFx !== settings.officialFx) { settings.officialFx = s.officialFx; syncOfficialFx(); }
       if (q !== settings.quality) { board3d?.setQuality?.(settings.quality); resize(); }
