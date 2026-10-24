@@ -606,6 +606,10 @@
 .gm__gear .icon { width: .28rem; height: .28rem; }
 .gm__gear:hover { color: var(--mint-400); border-color: var(--mint-700); }
 
+/* the entry is not a bare gear: it carries its name, so it is not one more anonymous circle in the corner */
+.gm__metrics { width: auto; padding: 0 .18rem; display: inline-flex; align-items: center; gap: .08rem; }
+.gm__metrics__text { font-size: .15rem; letter-spacing: .02em; }
+
 .gm__metrics[aria-expanded="true"] { color: var(--mint-400); border-color: var(--mint-700); background: var(--mint-900); }
 
 /* Local combat meter, docked above the corner's actual height (including mobile wrapped rows). */
