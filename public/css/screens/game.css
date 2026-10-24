@@ -607,8 +607,10 @@
 .gm__gear:hover { color: var(--mint-400); border-color: var(--mint-700); }
 
 /* the entry is not a bare gear: it carries its name, so it is not one more anonymous circle in the corner */
-.gm__metrics { width: auto; padding: 0 .18rem; display: inline-flex; align-items: center; gap: .08rem; }
-.gm__metrics__text { font-size: .15rem; letter-spacing: .02em; }
+.gm__gear.gm__metrics { width: auto; min-width: .56rem; padding: 0 .18rem; display: inline-flex; align-items: center;
+  justify-content: center; gap: .08rem; white-space: nowrap; }
+.gm__gear.gm__metrics .icon { flex: none; }
+.gm__metrics__text { font-size: .15rem; letter-spacing: .02em; white-space: nowrap; }
 
 .gm__metrics[aria-expanded="true"] { color: var(--mint-400); border-color: var(--mint-700); background: var(--mint-900); }
 
