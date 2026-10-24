@@ -607,10 +607,13 @@
 .gm__gear:hover { color: var(--mint-400); border-color: var(--mint-700); }
 
 /* the entry is not a bare gear: it carries its name, so it is not one more anonymous circle in the corner */
-.gm__gear.gm__metrics { width: auto; min-width: .56rem; padding: 0 .18rem; display: inline-flex; align-items: center;
-  justify-content: center; gap: .08rem; white-space: nowrap; }
-.gm__gear.gm__metrics .icon { flex: none; }
+/* devices.css re-pins .gm__gear (width: max(.56rem, 34px)) and it loads later, so this rule wins on specificity */
+.gm__corner .gm__gear.gm__metrics { width: auto; min-width: max(.56rem, 34px); height: max(.56rem, 34px);
+  padding: 0 .18rem; display: inline-flex; align-items: center; justify-content: center; gap: .08rem;
+  white-space: nowrap; }
+.gm__corner .gm__gear.gm__metrics .icon { flex: none; width: max(.28rem, 17px); height: max(.28rem, 17px); }
 .gm__metrics__text { font-size: .15rem; letter-spacing: .02em; white-space: nowrap; }
+@media (max-width: 560px) { .gm__metrics__text { display: none; } }
 
 .gm__metrics[aria-expanded="true"] { color: var(--mint-400); border-color: var(--mint-700); background: var(--mint-900); }
 
