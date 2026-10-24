@@ -1777,7 +1777,7 @@ function MatchScreen() {
             setDetail(null);
             setSel(null);
             setBondOpen(null);
-          }}><${Icon} name="signal" /><span class="gm__metrics__text">${t('作战统计')}</span></button>` : null}
+          }}><${Icon} name="signal" /></button>` : null}
         ${prepLoadoutOpen && phase === PHASE.PREP && priv && !priv.ready && !spectator
           ? html`<${LoadoutButton} from="prep" size="sm" />` : null}
         <button type="button" class="gm__gear" aria-label=${t('设置')} title=${t('设置')} onClick=${() => setSettingsOpen(true)}><${GIcon} name="gear" /></button>

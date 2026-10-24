@@ -78,7 +78,7 @@
 }
 .sp-coarse .gm.has-chat { --chat-entry-height: max(.48rem, 44px); }
 .gm.has-chat .gm__corner {
-  display: grid; grid-template-columns: max(1.51rem, 72px) .56rem max-content .56rem .56rem;
+  display: grid; grid-template-columns: max(1.51rem, 72px) repeat(4, .56rem);
   grid-template-areas: "chat . . . ." "emote metrics gear guide fs"; gap: .1rem; align-items: end; width: auto;
 }
 .gm.has-chat .gm__chat { grid-area: chat; min-width: 0; width: 100%; }
