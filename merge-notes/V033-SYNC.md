@@ -16,7 +16,12 @@
 远程：仓库里新增了 `gh` → `https://github.com/sganggs/Stronghold-Protocol.git`。
 旧的 `upstream` 远程指向本地镜像 `zmd/Stronghold-Protocol`（其 `origin/master` 还停在 d905c146，`master` 分支更旧）。
 
-## 二、已解决（8 个文件）
+## 二、已解决（19 个文件）
+
+> 第二轮补：`shared/protocol.js`（并集：我方 `capacity/spectatorCapacity/assetCache`、`lobby.online`、`wire`
+> ＋上游 `delta`、`version`、`soloUnlimited`、`lobby.watch`），以及 10 个测试文件（`package` / `update-package` /
+> `client-static` 的断言冲突均按「取我方」或「工具清单并集」处理；注意上游清单里的 `server/release-without-llm`
+> **两边仓库都不存在**，已从清单删除）。剩余冲突从 53 降到 **34**。
 
 | 文件 | 处理 |
 |---|---|
