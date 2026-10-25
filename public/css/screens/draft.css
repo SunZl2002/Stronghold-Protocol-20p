@@ -426,3 +426,16 @@
   .modal__box.minfo-dlg { width: min(max(12rem, 32px, calc(600px * var(--sp-ui, 1))), calc(100vw - .6rem - var(--sa-l, 0px) - var(--sa-r, 0px))); }
   .minfo-dlg__content.has-enemies { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* this fork: one framed column per fixed pool group (20-seat drafts) — its letter, the shared-pool note, its own clock */
+.draft-order__group-h { display: flex; align-items: center; gap: .08rem; padding: 0 .06rem .02rem; }
+.draft-order__group-badge {
+  display: grid; place-items: center; min-width: max(.18rem, 12px); height: max(.18rem, 12px);
+  font: 700 max(.12rem, 9px)/1 var(--font-num); color: #101719; background: var(--pool-group-color);
+  border: 1px solid rgba(8, 11, 10, .8);
+}
+.draft-order__group-name {
+  min-width: 0; font-size: calc(.13 * var(--t)); color: var(--text-lo); letter-spacing: .04em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.draft-order__group-secs { margin-left: auto; font-size: calc(.15 * var(--t)); color: var(--mint-400); }
