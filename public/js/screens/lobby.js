@@ -804,8 +804,8 @@ export function LobbyScreen() {
           <${LobbyMediaButton} />
           <${LobbyOnlinePill} count=${discoveryState.online} connected=${online}
             onOpen=${() => discovery.openOnline()} open=${discoveryState.onlineOpen} />
-          <${AssetCacheButton} />
-          <${AnnouncementButton} variant="secondary" />
+          <${AssetCacheButton} compact=${true} />
+          <${AnnouncementButton} variant="secondary" square=${true} />
           <${PwaInstallButton} class="lobby-pwa" square=${true} />
         </div>
       </div>
