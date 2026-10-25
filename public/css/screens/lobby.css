@@ -1255,3 +1255,44 @@ button.ally-card:disabled .ally-card__bar { filter: grayscale(.5) brightness(.8)
 .hub-side .lobby-discovery__stats b { font-size: calc(.24 * var(--t)); color: var(--mint-400); }
 .hub-side .lobby-discovery__stats small { font-size: calc(.12 * var(--t)); color: var(--text-lo); white-space: nowrap; }
 .hub-side .lobby-discovery__actions { display: flex; flex-wrap: wrap; align-items: center; gap: .06rem; }
+
+
+/* ==========================================================================================
+   The room directory (房间列表): the D039 discovery dialog's own rows, notes and footer. Recovered
+   after the hub's stylesheet took over — the component still renders these classes. Its footer keeps
+   the pager on the left and 关闭 on the right, in one row.
+   ========================================================================================== */
+.lobby-directory__footer { display: flex; align-items: center; justify-content: space-between; gap: .12rem; width: 100%; }
+.lobby-directory__pager { display: flex; align-items: center; gap: .08rem; }
+.lobby-directory__pager .num { color: var(--text-lo); font-size: calc(.14 * var(--t)); }
+.lobby-directory {background: #101713;}
+.lobby-directory .modal__body {padding: .12rem .18rem .08rem;}
+.lobby-directory__note {display: flex; align-items: center; justify-content: space-between; margin-bottom: .08rem; color: var(--text-lo); font-size: calc(.13 * var(--t));}
+.lobby-directory__note .btn {height: .34rem; padding: 0 .1rem; font-size: calc(.13 * var(--t));}
+.lobby-directory__rooms {display: flex; flex-direction: column; gap: .05rem; max-height: 5.8rem; overflow-y: auto; padding-right: .03rem;}
+.lobby-directory__room {display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: .1rem; align-items: center; min-height: .54rem; padding: .07rem .08rem; border: 1px solid var(--line); background: rgba(255, 255, 255, .025);}
+.lobby-directory__room:hover {border-color: var(--line-3); background: var(--mint-a10);}
+.lobby-directory__room.is-match {opacity: .78;}
+.lobby-directory__room-main, .lobby-directory__room-meta {display: flex; align-items: center; gap: .09rem; min-width: 0;}
+.lobby-directory__room-main {flex-wrap: wrap;}
+.lobby-directory__room-code {min-width: .62rem; color: var(--amber); font-size: calc(.19 * var(--t)); font-weight: 800; letter-spacing: .08em;}
+.lobby-directory__hidden-code {color: var(--text-dim); font-size: calc(.13 * var(--t));}
+.lobby-directory__room-mode {color: var(--text-md); font-size: calc(.14 * var(--t)); white-space: nowrap;}
+.lobby-directory__room-meta {flex-wrap: wrap; color: var(--text-lo); font-size: calc(.13 * var(--t)); white-space: nowrap;}
+.lobby-directory__status {padding: .02rem .07rem; border: 1px solid var(--mint-700); color: var(--mint-400); font-size: calc(.12 * var(--t));}
+.lobby-directory__status.is-match {border-color: var(--line-2); color: var(--text-dim);}
+.lobby-directory__room.is-retained {background: rgba(255, 180, 80, .025);}
+.lobby-directory__retained-note {margin: 0 0 .08rem; color: var(--text-lo); font-size: calc(.13 * var(--t)); line-height: 1.5;}
+.lobby-directory__offline {color: var(--amber); font-size: calc(.12 * var(--t));}
+.lobby-directory__private {color: var(--amber); font-size: calc(.12 * var(--t));}
+.lobby-directory__actions {display: flex; align-items: center; justify-content: flex-end; gap: .08rem;}
+.lobby-directory__actions .btn {height: .34rem; padding: 0 .1rem; white-space: nowrap;}
+/* Adjacent join/spectate controls must not borrow each other's horizontal touch area. */
+.sp-coarse .lobby-directory .lobby-directory__actions .btn::before {width: calc(100% + .08rem);}
+.lobby-directory__empty {display: grid; place-items: center; min-height: 1.7rem; color: var(--text-lo); font-size: calc(.16 * var(--t)); text-align: center;}
+.lobby-directory__empty.is-error {color: var(--amber);}
+.lobby-directory__footer {display: flex; align-items: center; justify-content: space-between; gap: .12rem; width: 100%;}
+.lobby-directory__pager {display: flex; align-items: center; gap: .1rem; color: var(--text-lo); font-size: calc(.14 * var(--t));}
+.lobby-directory__room {grid-template-columns: 1fr auto;}
+.lobby-directory__room-meta {grid-column: 1 / -1;}
+.lobby-directory__actions {grid-column: 2; grid-row: 1;}
