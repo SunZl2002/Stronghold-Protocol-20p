@@ -123,20 +123,27 @@ export function LobbyRoomList({ state, connected, onClose, onRefresh, onPage, on
 }
 
 export function LobbyDiscoveryPanel({ state, capacity, onCapacity, onOpen, onQuickMatch, busy, connected }) {
-  return html`<section class="lobby-discovery brackets" data-testid="lobby-discovery" aria-label=${t('联机大厅')}>
-    <div class="lobby-discovery__overview">
-      <div class="lobby-discovery__heading"><${MicroLabel} tone="mint">ALLIANCE MATCHMAKING<//><strong><${Icon} name="users" />${t('联机大厅')}</strong></div>
-      <div class="lobby-discovery__stats">
-        <span><b class="num" data-testid="lobby-room-count">${state.roomCount == null ? '—' : state.roomCount}</b><small>${t('总房间')}</small></span>
-        <span><b class="num" data-testid="lobby-match-count">${state.matchCount == null ? '—' : state.matchCount}</b><small>${t('进行中')}</small></span>
-        <span title=${t('游玩人数仅统计当前对局中在线的真人，包含淘汰和托管玩家，不含 AI 和观战者。')}><b class="num" data-testid="lobby-playing-count">${state.playingCount == null ? '—' : state.playingCount}</b><small>${t('游玩人数')}</small></span>
-        <span><b class="num" data-testid="lobby-joinable-count">${state.joinableCount == null ? '—' : state.joinableCount}</b><small>${t('可加入')}</small></span>
-      </div>
+  const counts = [
+    ['lobby-room-count', state.roomCount, t('总房间'), null],
+    ['lobby-match-count', state.matchCount, t('进行中'), null],
+    ['lobby-playing-count', state.playingCount, t('游玩人数'), t('游玩人数仅统计当前对局中在线的真人，包含淘汰和托管玩家，不含 AI 和观战者。')],
+    ['lobby-joinable-count', state.joinableCount, t('可加入'), null],
+  ];
+  return html`<section class="lobby-discovery" data-testid="lobby-discovery" aria-label=${t('联机大厅')}>
+    <div class="lobby-discovery__head">
+      <span class="lobby-discovery__icon" aria-hidden="true"><${Icon} name="users" /></span>
+      <span class="lobby-discovery__title">${t('联机大厅')}</span>
+      <span class="lobby-discovery__en">ALLIANCE MATCHMAKING</span>
+    </div>
+    <div class="lobby-discovery__stats">
+      ${counts.map(([id, value, label, hint]) => html`<span key=${id} title=${hint || label}>
+        <b class="num" data-testid=${id}>${value == null ? '—' : value}</b><small>${label}</small></span>`)}
     </div>
     <div class="lobby-discovery__actions">
       <${Button} variant="secondary" size="sm" icon="users" data-testid="lobby-directory-open" disabled=${!connected} onClick=${onOpen}>${t('房间列表')}<//>
-      <label class="lobby-discovery__preference" title=${t('优先所选人数，没有空席时匹配其他房间。')}><span>${t('房间偏好')}</span>
-        <select value=${capacity || ''} disabled=${busy || !connected} data-testid="lobby-match-capacity" onChange=${(e) => onCapacity(e.currentTarget.value ? Number(e.currentTarget.value) : null)}>
+      <label class="lobby-discovery__preference" title=${t('优先所选人数，没有空席时匹配其他房间。')}>
+        <select value=${capacity || ''} disabled=${busy || !connected} data-testid="lobby-match-capacity"
+          aria-label=${t('房间偏好')} onChange=${(e) => onCapacity(e.currentTarget.value ? Number(e.currentTarget.value) : null)}>
           <option value="">${t('不限人数')}</option>${ROOM_CAPACITIES.map((n) => html`<option key=${n} value=${n}>${t('优先 {n} 人房', { n })}</option>`)}
         </select>
       </label>
