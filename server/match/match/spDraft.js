@@ -120,7 +120,13 @@ export class MatchSpDraft {
       if (!ps || !ps.botControlled) return;
       const avail = g.cards.filter((c) => this.spCardAvailable(c, g)).map((c) => c.idx);
       if (!avail.length) { this.startSpTurn(g); return; }
-      this._applyCard(ps, botPickCard(this, ps, g.cards, avail));
+      // The fallback goes through the SELECTED strategy's pickCard (a custom strategy must see the decision even when
+      // it brings no decide hook of its own); the legacy bot is what `legacy` resolves to.
+      const fallback = () => this._applyCard(ps, this.bot.pickCard(this, ps, g.cards, avail));
+      if (this.bot.decide?.(this, ps, { kind: 'card',
+        valid: () => this.phase === PHASE.SP_DRAFT && this.sp === s && token === g.token,
+        complete: () => this.sp?.picks[ps.playerId] != null, fallback })) return;
+      fallback();
     });
   }
 
@@ -214,7 +220,7 @@ export class MatchSpDraft {
     if (!pending) return undefined;
     const indices = pending.cards.map((c, i) => i);
     const idx = mode === 'bot'
-      ? botPickCard(this, ps, pending.cards.map((c) => bountyCard(this.gd, c)), indices)
+      ? this.bot.pickCard(this, ps, pending.cards.map((c) => bountyCard(this.gd, c)), indices)
       : this.rngMeta.pick(indices);
     return this.pickPersonalChoice(ps, idx, pending.id);
   }

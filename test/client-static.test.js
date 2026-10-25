@@ -436,7 +436,9 @@ describe('net.js', () => {
     assert.ok(ws().last('ping'), 'latency probe before hello');
     net.setName('  凯尔希  ');
     const hello = ws().last('hello');
-    assert.deepEqual({ ...hello, rid: 0 }, { t: 'hello', rid: 0, name: '凯尔希', version: PROTOCOL_VERSION, wire: 1, token: 'tok-1' });
+    // shared/stateDelta.js: the hello says which frame form this build decodes (the server ignores it when it cannot)
+    const { STATE_DELTA_VERSION } = await import(pathToFileURL(path.join(ROOT, 'shared/stateDelta.js')).href);
+    assert.deepEqual({ ...hello, rid: 0 }, { t: 'hello', rid: 0, name: '凯尔希', version: PROTOCOL_VERSION, delta: STATE_DELTA_VERSION, wire: 1, token: 'tok-1' });
     assert.equal(net.status, 'handshaking');
     ws().recv({ t: 'welcome', rid: hello.rid, playerId: 'p_1', token: 't', name: '凯尔希', serverNow: Date.now() });
     assert.equal(net.status, 'online');

@@ -139,8 +139,8 @@ describe('community UI: lobby header and shared DIY details', { skip: !enabled }
       await page.screenshot({ path: screenshotPath(`diy-initial-${width}-xl.png`) });
       await page.waitForSelector(`${picker} .lo-sec--stats[data-variant="elite"]`);
       const detail = () => page.$eval(`${picker} .diy-pick__detail`, e => ({ stats: [...e.querySelectorAll('.dstat__v')].map(n => n.textContent),
-        skill: [...e.querySelectorAll('.diy-choice__desc')].map(n => n.textContent), talents: e.querySelectorAll('.lo-minfo__row').length,
-        tags: e.querySelector('.diy-choice__tags')?.textContent }));
+        skill: [...e.querySelectorAll('.lo-skill__desc')].map(n => n.textContent), talents: e.querySelectorAll('.lo-minfo__row').length,
+        tags: e.querySelector('.lo-skill__tags')?.textContent }));
       const elite = await detail(); assert.equal(elite.stats.length, 8); assert.ok(elite.talents >= 2); assert.match(elite.tags, /初始|被动/);
       await page.click(`${picker} button[data-variant="normal"]`);
       await page.waitForSelector(`${picker} .lo-sec--stats[data-variant="normal"]`);

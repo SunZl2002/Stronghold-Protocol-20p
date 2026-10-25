@@ -233,7 +233,7 @@ test('dry-run on a temporary checkout: the full and the lite file lists, the sum
     assert.match(full.stdout, /^checks: ok$/m);
     const lite = runTool(['--root', dir, '--dry-run', '--list', '--lite', '--allow-dirty']);
     assert.equal(lite.status, 0, lite.stdout + lite.stderr);
-    assert.deepEqual(listed(lite.stdout), SHIPPED_TRACKED, 'lite: the same runtime files, no art, fonts or local manifest');
+    assert.deepEqual(listed(lite.stdout).sort(), SHIPPED_TRACKED, 'lite: the same runtime files, no art, fonts or local manifest');
     assert.match(lite.stdout, /^package: lite \(no game art\)/m);
     assert.deepEqual(fs.readdirSync(dir).sort(), before, 'a dry-run writes nothing');
   } finally {
@@ -326,7 +326,7 @@ test('content packs ship: every committed pack of both layouts, never one only o
     const dry = runTool(['--root', dir, '--dry-run', '--list', '--lite', '--allow-dirty']);
     assert.equal(dry.status, 0, dry.stdout + dry.stderr);
     assert.deepEqual(listed(dry.stdout).sort(), [...SHIPPED_TRACKED, ...PACK_FILES, 'packs/index.json'].sort());
-    assert.match(dry.stdout, /^generated: packs\/index\.json \(the pack index of the shipped packs, for a static host\)$/m);
+    assert.match(dry.stdout, /^generated: packs\/index\.json, server\/release-without-llm \(the pack index of the shipped packs, for a static host; the release marker that keeps external AI off the package\)$/m);
     const r = runTool(['--root', dir, '--out', out, '--no-install', '--allow-dirty', '--lite', '--keep-stage']);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     const stage = path.join(out, `${FOLDER}-v9.9.9-lite`, FOLDER);
