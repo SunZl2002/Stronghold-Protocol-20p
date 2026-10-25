@@ -68,3 +68,33 @@
 - 上游 `MAX_SPECTATORS` 从 8 改成 2，**不能**让上游那行覆盖我方 8
 - 上游把 `unite`/`phases` 的流程改写过，`_startRoundAfterOffers` 与 `beforePrepOffers` 的调用关系要重新核对
 - `test/ws-compression.test.js` 是 D036 的守卫，**绝不能取上游**
+
+## 六、server/net.js 的合并设计（下一轮照此执行）
+
+`net.js` 有 **5 个冲突块**，必须**自上而下按行号**处理（不要用「最后一个标记」这类相对定位，会错位）：
+
+1. **HEAVY_TYPES**（第 1 块）：并集。我方 `lobby.watch` / `lobby.online` / `lobby.spectate`
+   ＋上游 `room.card` / `room.rerollSetup` / `room.proposeVersion` / `state.resync`
+2. **send()**（第 2 块）—— 已确定设计，落地代码如下：
+   ```js
+   export function send(ws, msg, encoded = null) {
+     const bytes = encoded == null ? encode(msg) : encoded;
+     if (bytes == null) return false;
+     const frame = prepareStateFrame(ws, msg, bytes);
+     if (frame.usable) {
+       const ok = sendRaw(ws, frame.data, { droppable: isDroppable(msg) });
+       if (ok) frame.commit();
+       return ok;
+     }
+     // 本分支：一次编码、按 socket 协商压缩
+     return sendPrepared(ws, preparedFromJson(bytes), { droppable: isDroppable(msg) });
+   }
+   ```
+   配套新增 `preparedFromJson(json)`（由 `prepareMessage` 拆出：`prepareMessage(msg) = preparedFromJson(encode(msg))`），
+   避免上游为了 delta 已经编码过的字节再编码一次。
+3. **setEmergency / congestion（我方）＋ onlineCount（上游）**：三者是**不同成员**，两边都留，注意各自补齐闭合大括号
+4. **welcome**：两边都留 —— 我方 `emergency` 帧与 `compactWire` 协商，加上游 `negotiateStateDelta(conn.ws, msg.delta)`
+   与 `session.aiTakeoverFrom → welcome.takeoverFrom`
+5. **heartbeat 循环**：待解（上游在心跳里加了在线数/淘汰逻辑，需逐行比对）
+
+> 教训：`net.js` 的块长度差异很大（1~2 行到 40+ 行），批量脚本要先打印**每块的首行**再定位，不能只数标记。
