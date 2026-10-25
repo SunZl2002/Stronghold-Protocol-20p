@@ -394,7 +394,7 @@ function skillTextNote(sk) {
 }
 
 // this fork passes foreignSkin (a teammate's unit carries its own skin); upstream 0.3.1 passes morphMode / onUnequip
-export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bonds, offBonds = null, loadout, onBond, live = null, hint = null, unitItems = null, standIn = null, diy = null, cultOpts = null, foreignSkin = null, morphMode = 'official', onUnequip = null }) {
+export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bonds, offBonds = null, loadout, onBond, live = null, hint = null, unitItems = null, standIn = null, diy = null, cultOpts = null, foreignSkin = null, ownerId = null, skin = null, morphMode = 'official', onUnequip = null }) {
   const m = data.get('assets');
   // The panel hosts the skin picker, so this subscription is what repaints the header when a choice or either global
   // switch moves — INCLUDING while the card is already open, which is why the live read wins for our own operators.
@@ -439,7 +439,8 @@ export function ChessDetail({ chess, piece, unit, snapHp, editable, onSell, bond
   blocks.head = html`
     <div key="head" class="dhead">
       <div class=${cx('dhead__art', golden && 'is-golden', `dhead__art--t${c.tier}`)}>
-        <${Img} src=${chessSkinPortraitUrl(m, body, art) || chessPortraitUrl(m, body)} fallback=${html`<${UnitThumb} kind="chess" id=${c.chessId} size="lg" rec=${si} />`} />
+        <${OperatorImage} m=${m} chess=${body} portrait ownerId=${ownerId} skin=${skin ?? foreignSkin}
+          fallback=${html`<${UnitThumb} kind="chess" id=${c.chessId} size="lg" rec=${si} />`} />
       </div>
       <div class="dhead__info">
         <div class="dhead__chips">
@@ -806,8 +807,9 @@ export function resolveDetail(target, pieces, { priv = null, backups = data.get(
     // 干员皮肤: an own piece, so the local browser's choice applies (m.private.pieces carry no skin of their own)
     // No skin here: this is OUR piece, and ChessDetail resolves it live. A snapshot taken when the card opened would
     // go stale the moment either global switch moved (that was the reported "打开卡片后开关没反应").
-    if (d) return { type: 'chess', chess: d.chess, piece: p, standIn: null, diy: d.diy };
-    return c ? { type: 'chess', chess: c, piece: p, standIn: ownSi(c) } : null;
+    const ownSeat = { ownerId: priv?.playerId ?? null, skin: null };
+    if (d) return { type: 'chess', ...ownSeat, chess: d.chess, piece: p, standIn: null, diy: d.diy };
+    return c ? { type: 'chess', ...ownSeat, chess: c, piece: p, standIn: ownSi(c) } : null;
   }
   if (target.kind === 'chess') {
     // a bond popup's 变形同构体 row hands the wearer's item ids on (bondStrip onMember): the card shows the pair and the chip
@@ -827,7 +829,7 @@ export function resolveDetail(target, pieces, { priv = null, backups = data.get(
     const cv = foreign ? (target.cultivation !== undefined ? { cultivation: target.cultivation } : { ops: null }) : null;
     // 干员皮肤 (docs/SKINS.md): what this surface draws is THIS browser's own operator, so the local choice applies
     // (`ownDiy`/`ownSi` above are the viewer's own records too). A teammate's card is never routed through here.
-    if (d) return { type: 'chess', chess: d.chess, hint: target.hint || null, standIn: null, diy: d.diy, ...(items.length ? { unitItems: items } : {}), ...(cv ? { cultOpts: cv } : {}), ...tap };
+    if (d) return { type: 'chess', ...appearance, chess: d.chess, hint: target.hint || null, standIn: null, diy: d.diy, ...(items.length ? { unitItems: items } : {}), ...(cv ? { cultOpts: cv } : {}), ...tap };
     const si = !c ? null : foreign ? (typeof target.standInFor === 'string' && target.standInFor ? standInOf(c, backups) : null) : ownSi(c);
     return c ? { type: 'chess', ...appearance, chess: c, hint: target.hint || null, standIn: si, ...(items.length ? { unitItems: items } : {}), ...(cv ? { cultOpts: cv } : {}), ...tap } : null;
   }
@@ -858,8 +860,8 @@ export function resolveDetail(target, pieces, { priv = null, backups = data.get(
     // OUR unit: ChessDetail reads the live choice. ANOTHER player's unit: its own skin travels in UnitInfo.skin, and
     // this browser's store must not override it (it would dress a teammate in OUR skin).
     const foreignSkin = own?.piece ? null : (typeof u.skin === 'string' && u.skin ? u.skin : null);
-    if (dr) return { type: 'chess', chess: dr, piece: own?.piece || null, unitId: u.id, unitItems: Array.isArray(u.items) ? u.items : null, standIn: null, diy: pick, ...(foreignSkin ? { foreignSkin } : {}), ...cv };
-    if (c) return { type: 'chess', chess: c, piece: own?.piece || null, unitId: u.id, unitItems: Array.isArray(u.items) ? u.items : null, standIn: si, ...(foreignSkin ? { foreignSkin } : {}), ...cv };
+    if (dr) return { type: 'chess', ...appearance, chess: dr, piece: own?.piece || null, unitId: u.id, unitItems: Array.isArray(u.items) ? u.items : null, standIn: null, diy: pick, ...(foreignSkin ? { foreignSkin } : {}), ...cv };
+    if (c) return { type: 'chess', ...appearance, chess: c, piece: own?.piece || null, unitId: u.id, unitItems: Array.isArray(u.items) ? u.items : null, standIn: si, ...(foreignSkin ? { foreignSkin } : {}), ...cv };
     const t = data.lookup('tokens', u.defId) || diyToken(u.defId);
     if (t) return { type: 'token', token: t, unitId: u.id, ownerId: tokenOwnerId(own?.piece, pieces) };
     const en = data.lookup('enemies', u.defId);

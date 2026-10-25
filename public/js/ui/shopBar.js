@@ -105,8 +105,10 @@ export function ChessCard({ slot, idx, priv, frozen = false, reason = null, free
   // A skin with a model but no portrait (34 of the dressed chess) falls back to its 180x180 AVATAR. The card's art box
   // is 0.5:1, so `object-fit: cover` would crop that square and blow it up ~1.5x — the upscaled, half-cut face the
   // owner spotted. `scard__art--square` keeps the whole square at its native size instead.
-  const artSrc = chessSkinPortraitUrl(m, c, skinId) || chessPortraitUrl(m, c);
-  const artIsAvatar = !!artSrc && artSrc.includes('/skin_avatar/');
+  // 皮肤 (docs/SKINS.md, B6 picture families): the owning seat resolves the picture — this card is always the viewer's
+  // own shop, so the local choice applies; a portrait-less outfit falls back to its square avatar, which keeps its own
+  // class instead of the 0.5:1 art box (object-fit: cover would crop and upscale the face).
+  const ownerId = priv?.playerId ?? null;
   const card = html`<button type="button" class=${cx('scard', `scard--t${tier}`, frozen && 'is-frozen', disabled && 'is-disabled', willMerge && 'is-merge', armed && 'is-armed', si && 'is-standin')}
       data-shop-slot=${free ? undefined : idx} aria-keyshortcuts=${free ? undefined : hotkeyLabelOf('buy')}
       title=${free || reason ? undefined : t('购买鼠标指向的商品 · {key}', { key: hotkeyLabelOf('buy') })}
@@ -114,7 +116,8 @@ export function ChessCard({ slot, idx, priv, frozen = false, reason = null, free
       aria-label=${`${t('{name}，价格 {price}', { name, price: slot.price })}${armed ? (disabled ? t('，无法购买') : t('，再次点击确认')) : ''}`} aria-pressed=${onTap ? String(!!armed) : undefined}>
     <span class="scard__bg" aria-hidden="true"></span>
     <span class="scard__water" aria-hidden="true">${bonds[0] ? html`<${BondGlyph} bondId=${bonds[0]} />` : null}</span>
-    <${Img} src=${artSrc} class=${cx('scard__art', artIsAvatar && 'scard__art--square')} />
+    <${OperatorImage} m=${m} chess=${c} portrait avatarFallback ownerId=${ownerId}
+      class="scard__art" avatarClass=${cx('scard__art', 'scard__art--square')} />
     <span class="scard__top">
       <${TierChip} tier=${tier} size="md" />
       <${PriceHex} slot=${slot} free=${free} poor=${reason === t('资金不足')} />
