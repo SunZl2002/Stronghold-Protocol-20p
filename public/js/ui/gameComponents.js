@@ -83,8 +83,18 @@ export function OperatorImage({ m, chess, ownerId, skin = null, portrait = false
   m = data.get('assets') || m;
   const localSkins = useStore((s) => s.skins, Object.is, skinsStore);
   const otherSkins = useStore((s) => s.otherSkins, Object.is, settingsStore);
-  const selected = useStore((s) => ownerSkin(chess?.charId, { ownerId, skin, myId: s.me.playerId,
-    players: s.match.public?.players || [], localSkins, otherSkins }));
+  // 设置「显示皮肤」 (skinsOn, this fork): off draws every operator with its own art, everywhere — the canvas path reads the
+  // switch itself (render/app.js), the DOM surfaces read it here
+  const skinsOn = useStore((s) => s.skinsOn !== false, Object.is, settingsStore);
+  // one's OWN seat resolves through the local picker (ownerId undefined in ownerSkin): the stored choice — including what
+  // 一键装备皮肤 just wrote — is what this browser draws, not the copy the server echoed back for the public roster
+  const myId = useStore((s) => s.me?.playerId ?? null);
+  const players = useStore((s) => s.match?.public?.players || null);
+  const mine = ownerId != null && ownerId === myId;
+  const selected = skinsOn
+    ? ownerSkin(chess?.charId, { ownerId: mine ? undefined : ownerId, skin, myId,
+      players: players || [], localSkins, otherSkins })
+    : null;
   const art = portrait ? chessPortraitUrl(m, chess, { skin: selected }) : null;
   const src = art || (!portrait || avatarFallback ? chessAvatarUrl(m, chess, { skin: selected }) : null);
   return html`<${Img} ...${props} src=${src} class=${art ? portraitClass ?? props.class : avatarClass ?? props.class} />`;

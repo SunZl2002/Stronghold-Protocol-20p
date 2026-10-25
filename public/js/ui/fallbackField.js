@@ -23,7 +23,7 @@ import { render } from '../../vendor/preact.module.js';
 import { html, TierChip } from './components.js';
 import { GEO } from '../../../shared/constants.js';
 import { chessAvatarUrl, chessSkinAvatarUrl, itemIconUrl, tokenAvatarUrl, enemyIconUrl } from './assetUrls.js';
-import { skinFor } from './skins.js';
+import { chosenSkin } from './skins.js';
 import { tileKey, hasFlag, UF, penPlacement, PEN, fieldTile, ownStandIn, ownDiyRecord } from './gameLogic.js';
 import { t } from '../../../shared/i18n.js';
 import { ownerSkin } from './skins.js';
@@ -162,7 +162,7 @@ export function createFallbackView(host, opts = {}) {
   }
   // a plain function, not a component: the field repaints on its own ticker, so it reads the choice at paint time
   function skinIdFor(chess) {
-    return chess?.chessId ? skinFor(chess.chessId) : null;
+    return chess?.chessId ? chosenSkin(chess.chessId) : null;
   }
   /** 0.2.0 补位: the player's own piece of a chess it does not own is its stand-in, bench and board alike (render/app.js pieceInfo) */
   function ownSi(chess) {
