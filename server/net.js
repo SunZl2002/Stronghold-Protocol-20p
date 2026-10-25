@@ -40,6 +40,7 @@
 //   onDisconnect(session)                  the session's socket closed (session kept for the reconnect window)
 //   onExpire(session)                      the session was purged (disconnected longer than the window)
 
+import { prepareStateFrame, negotiateStateDelta, resetStateDelta, setStateDeltaRoom } from './stateTransport.js';
 import { randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import { C2S, validateC2S } from '../shared/protocol.js';
@@ -60,6 +61,7 @@ export const NET_DEFAULTS = Object.freeze({
   maxConnections: 2000,         // concurrent sockets (enforced by index.js at upgrade time)
   maxConnectionsPerAddr: 64,    // concurrent sockets per client network key (0 = unlimited); see clientAddress
   maxSessions: 20_000,          // registry cap; oldest idle sessions are evicted first
+  maxOnline: 0,                 // authenticated players admitted at once (0 = unlimited); a resume is never refused
   heavyPerSec: 2,               // refill of the bucket for resend-heavy intents (HEAVY_TYPES)
   heavyBurst: 6,
   trustProxy: 'auto',           // forwarding headers: 'auto' = from loopback/private peers only, true = always, false = never
@@ -72,10 +74,15 @@ export const NET_DEFAULTS = Object.freeze({
  * (a ≤ 160-id list, the same way), room.diy (≤ 8 自选 picks checked against the data, the same way), room.spectate /
  * lobby.spectate (taking a spectator seat in a running match resends its state like a watcher's g.watch — server/lobby.js
  * spectate), room.setPlugins (a new visual set: every member downloads its art manifest — server/plugins/visualSet.js),
+ * room.skins (docs/SKINS.md) is a small skinId map sent on every appearance edit: a changed map re-broadcasts
+ * room.state to a waiting room (its seat cards wear it: room.state seats[].skins), room.card (名片干员, PR #643 split 6)
+ * re-broadcasts room.state on every accepted change, room.rerollSetup (重刷本局) rebuilds the opening and resends
+ * m.public (server/match/match/setupVote.js, DESIGN §35.47), room.proposeVersion (DESIGN §35.23) makes every page
+ * download that version's data, state.resync forces a full state resend,
  * and lobby.watch with on:true/list:true (a paginated room directory, at most 50 rows per reply) and lobby.online
  * (this fork's D039 roster, at most 200 rows per reply).
  */
-export const HEAVY_TYPES = new Set(['g.watch', 'room.loadout', 'room.skins', 'room.ownership', 'room.diy', 'room.spectate', 'lobby.spectate', 'room.setPlugins', 'lobby.watch', 'lobby.online']);
+export const HEAVY_TYPES = new Set(['g.watch', 'room.loadout', 'room.skins', 'room.ownership', 'room.diy', 'room.spectate', 'lobby.spectate', 'room.setPlugins', 'lobby.watch', 'lobby.online', 'room.card', 'room.rerollSetup', 'room.proposeVersion', 'state.resync']);
 
 /** Close codes (see header). */
 export const CLOSE = Object.freeze({ REPLACED: 4001, HELLO_TIMEOUT: 4002, POLICY: 1008, SHUTDOWN: 1001 });
@@ -132,6 +139,9 @@ export class Session {
      * Match.publicView().players[].skins
      */
     this.skins = null;
+    /** @type {string | null} 名片干员 (lobby-owned, PR #643 split 6): the charId whose portrait fills this player's seat card in
+     * the waiting room; PUBLIC (room.state seats[].card), cosmetic */
+    this.card = null;
     /** @type {string} client address of the latest connection (logging) */
     this.addr = '?';
     /** @type {string | null} per-network limit key of the latest connection (null = not limited), see clientAddress */
@@ -350,10 +360,21 @@ export const isDroppable = (msg) => !!msg && msg.t === 'b.snap';
  * Encode and send one message to a socket. Never throws.
  * @param {import('ws').WebSocket | null | undefined} ws
  * @param {object} msg
+ * @param {string | null} [encoded] bytes a caller already produced; must be this message when it is a state kind
  * @returns {boolean}
  */
-export function send(ws, msg) {
-  return sendPrepared(ws, prepareMessage(msg), { droppable: isDroppable(msg) });
+export function send(ws, msg, encoded = null) {
+  const bytes = encoded == null ? encode(msg) : encoded;
+  if (bytes == null) return false;
+  // State kinds go through the delta transport: it owns the per-connection baseline, so commit() only runs after the
+  // frame was really queued (a dropped or terminated socket must not advance it).
+  const frame = prepareStateFrame(ws, msg, bytes);
+  // Pre-encoded bytes that are not a JSON object cannot be a baseline: fall back to the frame encoded here.
+  const data = frame.usable ? frame.data : encode(msg);
+  if (data == null) return false;
+  const ok = sendRaw(ws, data, { droppable: isDroppable(msg) });
+  if (ok && frame.usable) frame.commit();
+  return ok;
 }
 
 /**
@@ -362,9 +383,10 @@ export function send(ws, msg) {
  * @param {object} msg
  * @returns {boolean}
  */
-export function sendSession(session, msg) {
+export function sendSession(session, msg, encoded = null) {
   if (!session || !session.connected) return false;
-  return send(session.ws, msg);
+  setStateDeltaRoom(session.ws, session.roomCode ?? null);
+  return send(session.ws, msg, encoded);
 }
 
 /** @param {unknown} rid */
@@ -637,6 +659,15 @@ export class Network {
       impairedNetworks: new Set([...congestedNetworks, ...delayedNetworks]).size, maxBufferedBytes };
   }
 
+  /** Number of authenticated sessions bound to a live socket (what the online cap counts). */
+  get onlineCount() {
+    let n = 0;
+    for (const conn of this.conns.values()) {
+      if (conn.session?.connected && conn.session.ws === conn.ws) n++;
+    }
+    return n;
+  }
+
   /**
    * Upgrade-time admission check (server/http/websocket.js): null to accept, otherwise the reason to refuse.
    * @param {import('node:http').IncomingMessage} req
@@ -730,6 +761,16 @@ export class Network {
     const heavy = HEAVY_TYPES.has(msg.t) && !(msg.t === 'lobby.watch' && (!msg.on || !msg.list));
     if (heavy && !conn.heavy.take(now)) { this.reply(conn, errorMsg(ERR.RATE, rid, `${msg.t} too often`)); return; }
 
+    // A client that missed a delta asks for a full frame (shared/stateDelta.js StateReceiver). Dropping the baseline is
+    // the point: the next frame of every state channel is then a full one, which is what restores the client. The state
+    // itself is resent by the same resync a repeated hello runs (the lobby throttles it with resyncMinGapMs).
+    if (msg.t === 'state.resync') {
+      resetStateDelta(conn.ws);
+      const resent = this.handler.onMessage(conn.session, { t: 'state.resync' });
+      this.answer(conn, msg, rid, resent ?? { ok: true });
+      return;
+    }
+
     let res;
     try {
       // client-side combat reports (b.progress / b.result, DESIGN §14) belong to the running match like 'g.*' intents:
@@ -801,6 +842,17 @@ export class Network {
         resumed = true;
         if (session.ws && session.ws !== conn.ws) this.detachReplaced(session.ws);
       } else {
+        // The online cap (SP_MAX_ONLINE) decides *new players only*: a token that still resolves resumed above and never
+        // reaches this check, so a full server does not lock out the people already playing. "A resume is never refused"
+        // holds at this layer alone — the socket cap (maxConnections, checked at the upgrade in
+        // server/http/websocket.js, answering 503 before a socket exists) still applies, and the `noReplace` / claimAt
+        // decision above still answers SESSION_IN_USE for a token whose session is live on another socket. This check is
+        // what the player sees as 服务器已满 (ERR.SERVER_FULL).
+        if (this.opts.maxOnline > 0 && this.onlineCount >= this.opts.maxOnline) {
+          this.reply(conn, errorMsg(ERR.SERVER_FULL, rid, 'server full (online cap)'));
+          try { conn.ws.close(CLOSE.POLICY, 'server full'); } catch { /* ignore */ }
+          return;
+        }
         session = this.registry.create(name);
         if (!session) { this.reply(conn, errorMsg(ERR.INTERNAL, rid, 'server full')); return; }
       }
@@ -815,6 +867,9 @@ export class Network {
     session.addr = conn.ip;
     session.limitKey = conn.key;
     if (this.emergency.active && this.handler.allowEmergencyResume?.(session)) emergencySockets.add(conn.ws);
+    // Opt-in state deltas (shared/stateDelta.js): a hello may name the version it decodes. A repeated hello keeps the
+    // baseline it already has, a client that never names one (or names an unknown version) keeps getting plain frames.
+    negotiateStateDelta(conn.ws, msg.delta);
 
     let extra = null;
     try { extra = this.handler.welcomeInfo?.() ?? null; } catch (e) { this.log.error('[net] welcomeInfo crashed', e); }
@@ -822,6 +877,7 @@ export class Network {
       emergency: this.emergency };
     const wire = this.opts.compactWire && msg.wire === WIRE_VERSION ? WIRE_VERSION : 0;
     if (wire) welcome.wire = wire;
+    if (session.aiTakeoverFrom) { welcome.takeoverFrom = session.aiTakeoverFrom; session.aiTakeoverFrom = null; }
     if (validRid(rid)) welcome.rid = rid;
     // Repeated hello may renegotiate too. The acknowledgement is always readable JSON and precedes all pushes.
     setWireVersion(conn.ws, wire);
@@ -863,30 +919,58 @@ export class Network {
 
   /** Ping every socket; terminate the ones that did not answer since the previous heartbeat. */
   heartbeat() {
+    // A closed server has no connection left to keep alive, and a shutting-down one must not be walked: nothing to do.
+    // The pass yields between chunks, so a large connection set cannot hold the event loop for the whole sweep.
+    // A pass still yielding when the next tick fires is skipped rather than started a second time on top of itself.
+    if (this.closed || this._heartbeatPending) return;
+    this._heartbeatPending = true;
+    this._heartbeatPass()
+      .catch((e) => this.log.debug?.('[net] heartbeat error', e?.message))
+      .finally(() => { this._heartbeatPending = false; });
+  }
+
+  /**
+   * One heartbeat pass: the same per-connection step, in chunks of 128 with a yield in between. Fewer connections
+   * than one chunk still run through in a single tick, exactly like the old synchronous loop.
+   *
+   * Each connection is pinged at most once per pass. The pass stops when the server closes, and a connection that
+   * was removed or replaced while the pass was yielding is skipped — the map no longer holds that same object — and
+   * is left to the next pass instead of being acted on twice or after its owner already dropped it.
+   */
+  async _heartbeatPass() {
     const now = this.now();
-    for (const conn of this.conns.values()) {
-      try {
-        if (conn.closing) {
-          // Closing handshake never completed within a heartbeat interval → drop the TCP connection.
-          if (!conn.alive) conn.ws.terminate();
-          conn.alive = false;
-          continue;
-        }
-        if (!conn.session && now - conn.openedAt > this.opts.helloTimeoutMs) {
-          conn.close(CLOSE.HELLO_TIMEOUT, 'hello timeout');
-          continue;
-        }
-        if (!conn.alive && !(this.emergency.active && conn.session && this.handler.allowEmergencyResume?.(conn.session))) {
-          conn.ws.terminate(); continue;
-        }
+    let seen = 0;
+    for (const [key, conn] of [...this.conns.entries()]) {
+      if (this.closed) return;
+      if (this.conns.get(key) !== conn) continue;
+      this._heartbeatConn(conn, now);
+      if (++seen % 128 === 0) await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+
+  /** The per-connection step of a heartbeat: hello timeout, dead-socket terminate, emergency-tolerant ping. */
+  _heartbeatConn(conn, now) {
+    try {
+      if (conn.closing) {
+        // Closing handshake never completed within a heartbeat interval → drop the TCP connection.
+        if (!conn.alive) conn.ws.terminate();
         conn.alive = false;
-        // Keep the oldest unanswered heartbeat: repeated pings during protection must not
-        // give a persistently unreachable player a fresh apparently healthy recovery window.
-        conn.pendingPingAt ??= now;
-        conn.ws.ping();
-      } catch (e) {
-        this.log.debug?.('[net] heartbeat error', e?.message);
+        return;
       }
+      if (!conn.session && now - conn.openedAt > this.opts.helloTimeoutMs) {
+        conn.close(CLOSE.HELLO_TIMEOUT, 'hello timeout');
+        return;
+      }
+      if (!conn.alive && !(this.emergency?.active && conn.session && this.handler?.allowEmergencyResume?.(conn.session))) {
+        conn.ws.terminate(); return;
+      }
+      conn.alive = false;
+      // Keep the oldest unanswered heartbeat: repeated pings during protection must not give a persistently
+      // unreachable player a fresh apparently healthy recovery window.
+      conn.pendingPingAt ??= now;
+      conn.ws.ping();
+    } catch (e) {
+      this.log.debug?.('[net] heartbeat error', e?.message);
     }
   }
 

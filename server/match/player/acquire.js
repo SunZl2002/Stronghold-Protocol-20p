@@ -322,6 +322,8 @@ export class PlayerAcquire {
     const consumed = incoming ? [{ piece: incoming, area: 'new' }] : [];
     for (const l of locs) { if (consumed.length >= need) break; consumed.push(l); }
     if (consumed.length < need) return null;
+    // remember where equipped twins sat: with a full hand AND a full temp the golden item takes the first one's slot
+    const slotOf = consumed.filter((l) => l.area === 'equipped').map((l) => ({ holder: l.holder, idx: l.holder.items.indexOf(l.piece) }));
     for (const l of consumed) if (l.area !== 'new') this._detach(l);
     // This fork's capacity branch: a merged piece inherits `noPool` (a fixed operator-gift identity survives the merge),
     // and a full 整备区 no longer destroys the result — it lands in the consumed slot instead of vanishing.
