@@ -682,10 +682,6 @@ export function LobbyScreen() {
     const saved = loadPref('lobby.capacity', DEFAULT_SEATS);
     return ROOM_CAPACITIES.includes(saved) ? saved : DEFAULT_SEATS;
   });
-  const [matchCapacity, setMatchCapacity] = useState(() => {
-    const saved = loadPref('lobby.matchCapacity', null);
-    return ROOM_CAPACITIES.includes(saved) ? saved : null;
-  });
   const discoveryRef = useRef(null);
   if (!discoveryRef.current) discoveryRef.current = createLobbyDiscovery({ net });
   const discovery = discoveryRef.current;
@@ -778,7 +774,7 @@ export function LobbyScreen() {
     }));
   };
   // this fork's discovery entries: 快速匹配 (capacity-aware), the room directory and the D039 roster
-  const quickMatch = () => run('quickMatch', () => net.request('lobby.quickMatch', matchCapacity ? { capacity: matchCapacity } : {}).catch((err) => {
+  const quickMatch = () => run('quickMatch', () => net.request('lobby.quickMatch', {}).catch((err) => {
     if (err?.code === ERR.ROOM_NOT_FOUND) { toast(t('暂无可加入的房间，请稍后重试或创建同盟。'), 'warn'); return; }
     throw err;
   }));
@@ -820,8 +816,7 @@ export function LobbyScreen() {
       <aside class="hub-side">
         <${AchievementCard} onOpen=${() => setAchOpen(true)} />
         <${HubTile} icon="key" label=${t('密钥加入')} en="JOIN WITH KEY" class="hub-tile--key" onClick=${() => setAllyOpen(true)} />
-        <${LobbyDiscoveryPanel} state=${discoveryState} connected=${online} capacity=${matchCapacity}
-          onCapacity=${(n) => { setMatchCapacity(n); savePref('lobby.matchCapacity', n); }}
+        <${LobbyDiscoveryPanel} state=${discoveryState} connected=${online}
           onOpen=${() => discovery.show()} onQuickMatch=${quickMatch} busy=${busy === 'quickMatch'} />
         <${TipsPanel} />
       </aside>

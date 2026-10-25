@@ -17,16 +17,20 @@ const text = (node) => {
   return typeof node === 'object' ? text(node.props?.children) : String(node);
 };
 
-test('preference capacities use the same canonical values as room creation and default is unrestricted', () => {
-  const picked = [];
-  const panel = LobbyDiscoveryPanel({ state: emptyLobbyDiscovery(), connected: true, capacity: null, onCapacity: (n) => picked.push(n) });
+test('the panel offers exactly two controls: the room directory and 最快匹配 (no capacity preference any more)', () => {
+  const opened = [];
+  const matched = [];
+  const panel = LobbyDiscoveryPanel({ state: emptyLobbyDiscovery(), connected: true,
+    onOpen: () => opened.push(true), onQuickMatch: () => matched.push(true), busy: null });
   const nodes = [...walk(panel)];
-  const select = nodes.find((n) => n.type === 'select');
-  assert.equal(select.props.value, '');
-  assert.deepEqual([...walk(select)].filter((n) => n.type === 'option').map((n) => n.props.value), ['', ...ROOM_CAPACITIES]);
-  select.props.onChange({ currentTarget: { value: '20' } });
-  select.props.onChange({ currentTarget: { value: '' } });
-  assert.deepEqual(picked, [20, null]);
+  assert.equal(nodes.some((n) => n.type === 'select'), false, 'no capacity select');
+  const buttons = nodes.filter((n) => n.type === Button);
+  assert.equal(buttons.length, 2, '房间列表 + 最快匹配');
+  assert.deepEqual(buttons.map((n) => text(n)), ['房间列表', '最快匹配']);
+  assert.equal(buttons[1].props.disabled, false);
+  buttons[0].props.onClick();
+  buttons[1].props.onClick();
+  assert.deepEqual([opened.length, matched.length], [1, 1]);
 });
 
 const room = { roomId: 'public-room-id', code: 'ABCD', mode: 'coop', difficulty: 'FUNNY', capacity: 20,

@@ -122,7 +122,7 @@ export function LobbyRoomList({ state, connected, onClose, onRefresh, onPage, on
   <//>`;
 }
 
-export function LobbyDiscoveryPanel({ state, capacity, onCapacity, onOpen, onQuickMatch, busy, connected }) {
+export function LobbyDiscoveryPanel({ state, onOpen, onQuickMatch, busy, connected }) {
   const counts = [
     ['lobby-room-count', state.roomCount, t('总房间'), null],
     ['lobby-match-count', state.matchCount, t('进行中'), null],
@@ -141,12 +141,6 @@ export function LobbyDiscoveryPanel({ state, capacity, onCapacity, onOpen, onQui
     </div>
     <div class="lobby-discovery__actions">
       <${Button} variant="secondary" size="sm" icon="users" data-testid="lobby-directory-open" disabled=${!connected} onClick=${onOpen}>${t('房间列表')}<//>
-      <label class="lobby-discovery__preference" title=${t('优先所选人数，没有空席时匹配其他房间。')}>
-        <select value=${capacity || ''} disabled=${busy || !connected} data-testid="lobby-match-capacity"
-          aria-label=${t('房间偏好')} onChange=${(e) => onCapacity(e.currentTarget.value ? Number(e.currentTarget.value) : null)}>
-          <option value="">${t('不限人数')}</option>${ROOM_CAPACITIES.map((n) => html`<option key=${n} value=${n}>${t('优先 {n} 人房', { n })}</option>`)}
-        </select>
-      </label>
       <${Button} variant="primary" size="sm" iconRight="chevrons" data-testid="lobby-quick-match" loading=${busy} disabled=${!connected} onClick=${onQuickMatch}>${t('最快匹配')}<//>
     </div>
   </section>`;

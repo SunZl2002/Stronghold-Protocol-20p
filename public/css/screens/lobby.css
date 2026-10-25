@@ -1255,4 +1255,3 @@ button.ally-card:disabled .ally-card__bar { filter: grayscale(.5) brightness(.8)
 .hub-side .lobby-discovery__stats b { font-size: calc(.24 * var(--t)); color: var(--mint-400); }
 .hub-side .lobby-discovery__stats small { font-size: calc(.12 * var(--t)); color: var(--text-lo); white-space: nowrap; }
 .hub-side .lobby-discovery__actions { display: flex; flex-wrap: wrap; align-items: center; gap: .06rem; }
-.hub-side .lobby-discovery__preference select { max-width: 1.35rem; }
