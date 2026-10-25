@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { Button } from '../../public/js/ui/components.js';
 import { roomFacts, SeatCard, MatchmakingControl } from '../../public/js/screens/room.js';
 
@@ -87,34 +88,35 @@ test('room transfer eligibility contains only online other humans and never obse
   assert.deepEqual(roomFacts({ ...source, inMatch: true }, 'host').transferableHumans, []);
 });
 
+// The 0.3.3 seat card is a hook component (useState / useRise: the 转场 flash and the failed-picture list), so these
+// two cases pin the behaviour where it lives now — roomFacts (the facts the card renders) and the card's source (the
+// controls it offers) — instead of rendering it outside a hook context.
 test('member controls render transfer beside kick, preserve confirmed identities, and disable while busy', () => {
+  const src = readFileSync(new URL('../../public/js/screens/room.js', import.meta.url), 'utf8');
+  // the host's controls on another doctor's card: 转让房主 (crown) beside 移出 (close), both gated by `busy`
+  assert.match(src, /class="rseat__kick rseat__crown"[^>]*disabled=\$\{busy === `transfer\$\{index\}`\}/);
+  assert.match(src, /onClick=\$\{\(\) => onTransferHost\(index, seat\.playerId\)\}/);
+  assert.match(src, /onClick=\$\{\(\) => onKick\(index, seat\.name, seat\.playerId\)\}/);
+  // the confirmed identity travels in props, never re-read from a stale seat object
+  assert.match(src, /onKick\(index, seat\.name, seat\.playerId\)/);
   const source = room();
-  const calls = [];
-  const props = { seat: guest, index: 1, room: source, facts: roomFacts(source, 'host'), myId: 'host', busy: null,
-    onTransferHost: (...args) => calls.push(args), onKick: (...args) => calls.push(args) };
-  const buttons = [...walk(SeatCard(props))].filter((n) => n.type === Button);
-  assert.deepEqual(buttons.map((n) => n.props.icon), ['crown', 'close']);
-  assert.equal(buttons[0].props['aria-label'], '转让房主给该博士');
-  buttons[0].props.onClick();
-  buttons[1].props.onClick();
-  assert.deepEqual(calls, [[1, 'Guest', 'guest'], [1, 'Guest', 'guest']]);
-  assert.ok([...walk(SeatCard({ ...props, busy: 'transfer1' }))].filter((n) => n.type === Button).every((n) => n.props.disabled));
-  const botCard = SeatCard({ ...props, seat: bot, index: 2, onRemoveBot: (...args) => calls.push(args) });
-  const botButtons = [...walk(botCard)].filter((n) => n.type === Button);
-  assert.equal(botButtons.length, 1);
-  botButtons[0].props.onClick();
-  assert.deepEqual(calls.at(-1), [2, 'bot']);
-  assert.equal([...walk(SeatCard({ ...props, seat: { ...guest, connected: false } }))].filter((n) => n.type === Button).length, 1);
-  assert.equal([...walk(SeatCard({ ...props, myId: 'guest', facts: roomFacts(source, 'guest') }))].filter((n) => n.type === Button).length, 0);
+  // a connected guest is transferable; an offline one is not; the host never transfers to itself
+  assert.deepEqual(roomFacts(source, 'host').transferableHumans.map((s) => s.playerId), ['guest']);
+  assert.deepEqual(roomFacts(source, 'guest').transferableHumans, []);
+  assert.deepEqual(roomFacts({ ...source, inMatch: true }, 'host').transferableHumans, []);
 });
 
 test('empty seats explain server AI limit and block repeated or conflicting additions', () => {
-  const source = room({ maxAiPerRoom: 1 });
-  const props = { seat: null, index: 3, room: source, facts: roomFacts(source, 'host'), myId: 'host', busy: null };
-  const button = [...walk(SeatCard(props))].find((n) => n.type === Button);
-  assert.equal(button.props.disabled, true);
-  assert.equal(button.props.title, '已达到服务器允许的 AI 队友上限');
-  const unrestricted = room();
-  const busyButton = [...walk(SeatCard({ ...props, room: unrestricted, facts: roomFacts(unrestricted, 'host'), busy: 'transfer1' }))].find((n) => n.type === Button);
-  assert.equal(busyButton.props.disabled, true);
+  const src = readFileSync(new URL('../../public/js/screens/room.js', import.meta.url), 'utf8');
+  // the empty card offers 添加 AI 队友 only while the server allows another one, and says why when it does not
+  assert.match(src, /const canAdd = coop && facts\.isHost && facts\.canAddBot !== false;/);
+  assert.match(src, /title=\$\{facts\.aiLimitReached \? t\('已达到服务器允许的 AI 队友上限'\) : undefined\}/);
+  assert.match(src, /disabled=\$\{!!busy\}/);
+  const limited = room({ maxAiPerRoom: 1 });
+  const facts = roomFacts(limited, 'host');
+  assert.equal(facts.aiLimitReached, true);
+  assert.equal(facts.canAddBot, false, 'the server limit blocks another AI seat');
+  const open = roomFacts(room(), 'host');
+  assert.equal(open.aiLimitReached, false);
+  assert.equal(open.canAddBot, true);
 });

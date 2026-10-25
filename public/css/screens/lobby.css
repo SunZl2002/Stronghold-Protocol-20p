@@ -1327,3 +1327,8 @@ button.ally-card:disabled .ally-card__bar { filter: grayscale(.5) brightness(.8)
   .lobby-discovery__actions { flex-wrap: wrap; }
   .lobby-discovery__preference { flex: 1 1 1.8rem; }
 }
+
+/* this fork: the seat capacity of 创建同盟 (4 / 8 / 10 / 16 / 20) ------------------------------------------------ */
+.ally-capacity { display: flex; align-items: center; flex-wrap: wrap; gap: .06rem .1rem; padding: .06rem .02rem; }
+.ally-capacity__label { flex: none; font-size: calc(.15 * var(--t)); color: var(--text-lo); letter-spacing: .04em; }
+.ally-capacity .room-capacity__opt { min-width: .46rem; height: .34rem; }
