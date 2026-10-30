@@ -896,8 +896,11 @@ test('干员战斗语音 (DESIGN §21.30): the manifest data, the official prior
     else if (Array.isArray(x)) x.forEach(walk);
     else if (x && typeof x === 'object') Object.values(x).forEach(walk);
   };
+  // skill4 is the fourth skill's line: an operator with three skills has none, and the 0.3.3 manifest now carries the
+  // historical (第一期) operators too, so it is required only where it exists. Every other battle slot is universal.
+  const required = slots.filter((s) => s !== 'skill4');
   for (const id of charIds) {
-    for (const s of slots) assert.ok(voice[id][s], `${id}.${s}`);
+    for (const s of required) assert.ok(voice[id][s], `${id}.${s}`);
     for (const s of prepOnly) assert.equal(voice[id][s], undefined, `${id}.${s} is not planned by default`);
     walk(voice[id]);
   }

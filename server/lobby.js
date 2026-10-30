@@ -403,8 +403,11 @@ export class Room {
      * humans first inside each draft group (D004/D012); disconnected/autoplay humans share the automatic category.
      */
     this.aiPicksLast = mode !== 'solo';
-    // [ASSUMED] Remake cooperation option, approved 2026-10-24; host opt-in before the match.
-    this.aiTakeoverEnabled = false;
+    // 20p: 观战者接管 AI is ON for a co-op room. The host may still switch it off in 同盟设置 before the start
+    // (room.setAiTakeover); a solo room has no teammates to inherit, so the option stays off there.
+    this.aiTakeoverEnabled = mode !== 'solo';
+    // no election exists any more; the field stays so room.state always publishes an (empty) list
+    this.aiTakeoverVotes = [];
     /**
      * 「不限时」 (room.setSoloUnlimited, DESIGN §35.23.10; a timed solo only, off by default): the match is built with
      * opts.soloUnlimited. room.state omits the key unless this is true.
@@ -912,8 +915,7 @@ export class Lobby {
       case 'room.setAiPicksLast': return this.setAiPicksLast(session, msg);
       case 'room.setSoloUnlimited': return this.setSoloUnlimited(session, msg);
       case 'room.setAiTakeover': return this.setAiTakeover(session, msg);
-      case 'room.aiRequest':
-      case 'room.aiVote': return aiTakeover(this, session, msg);
+      case 'room.aiRequest': return aiTakeover(this, session, msg);
       case 'room.addBot': return this.addBot(session);
       case 'room.removeBot': return this.removeBot(session, msg);
       case 'room.kick': return this.kick(session, msg);

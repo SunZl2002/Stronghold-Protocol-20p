@@ -422,7 +422,7 @@ function AiLastToggle({ option, busy, onToggle }) {
 function AiTakeoverToggle({ option, busy, onToggle }) {
   if (!option) return null;
   return html`<div class="ailast">
-    <${Tooltip} text=${t('默认关闭。开启后，观战者可在休整期经同房间真人投票接替 AI；继承记录不计个人统计或奖励。')}>
+    <${Tooltip} text=${t('默认开启。观战者可在休整期直接接管一个 AI 队友，无需投票；继承的记录不计个人统计或奖励。')}>
       <button type="button" role="switch" aria-checked=${option.on ? 'true' : 'false'} data-testid="room-ai-takeover"
           class=${`dpick__opt ailast__opt${option.on ? ' is-active' : ''}`} disabled=${!option.editable || !!busy}
           onClick=${() => option.editable && onToggle(!option.on)}>

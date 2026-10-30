@@ -468,12 +468,9 @@ and keep full replay records. Version negotiation/votes and hello identity owner
 
 ### Spectator AI handover (PR #691, §35.100, [ASSUMED])
 
-The host may opt in before the match with `room.setAiTakeover {on}` (default off, co-op only); changing it clears human ready flags. Off, both option/vote keys are omitted from room.state, the client hides the panel, and requests/votes/transfers are refused.
-In an enabled original-content default-version co-op room during PREP, a spectator may send `room.aiRequest {botId}`.
-`room.aiVote {voteId, approve}` records one replaceable vote per online, non-autoplay human teammate.
-Strict majority accepts/rejects; an online host decides if there are no eligible human teammates.
-Requests expire after 30 seconds and cannot transfer a seat during combat or after match disposal.
-`room.state.aiTakeoverVotes` exposes the applicant, AI seat, eligible IDs, yes/no votes and expiry.
+The option is on for a co-op room; `room.setAiTakeover {on}` lets the host switch it off before the start (a running match refuses the change, and changing it clears human ready flags). Off, the option key is omitted from room.state and the client hides the panel.
+In an enabled original-content default-version co-op room during PREP, a spectator sends `room.aiRequest {botId}` and the seat is handed over at once — there is no vote: the earlier `room.aiVote` election (strict majority, 30-second expiry, electorate that cancelled on change) is gone with 0.3.3-20p.
+A seat cannot be transferred during combat, to a seat that is no longer an alive AI, or after the match was disposed; `room.state.aiTakeoverVotes` stays in the payload as an empty list for older clients.
 Successful transfer retains the AI player ID, funds and inventory, rebinds the applicant's existing session token,
 and sends `welcome.takeoverFrom` followed by ordinary room/match resynchronization. Test-room admission still
 requires the existing acknowledgement before spectating. Isolated gameplay-plugin and historical-version matches are unsupported.

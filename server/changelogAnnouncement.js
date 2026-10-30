@@ -24,10 +24,10 @@ import { createHash } from 'node:crypto';
  * explicit exclusion list rather than an allow-list, so a section added to the CHANGELOG later is announced by default
  * instead of being silently swallowed.
  */
-const EXCLUDED_SECTIONS = ['工具与开发', '开发', '内部'];
+const EXCLUDED_SECTIONS = ['工具与开发', '开发', '内部']; // i18n-ignore: CHANGELOG heading names, matched as data
 
 /** The announcement title. The section's own heading supplies the version when there is one. */
-const TITLE_PREFIX = '本次更新';
+const TITLE_PREFIX = '本次更新'; // i18n-ignore: the announcement body is the CHANGELOG's own Chinese text
 
 /**
  * Split a CHANGELOG into `## ` sections, preserving their body verbatim.
@@ -128,6 +128,6 @@ export function publishChangelogAnnouncement({ store, root, log, readFile = (f) 
   } catch (e) {
     return { state: 'failed', id: entry.id, error: String(e?.message || e) };
   }
-  say(`[announcements] ${entry.title} (${entry.id}) — 来自 CHANGELOG 的「${entry.heading}」`);
+  say(`[announcements] ${entry.title} (${entry.id}) — 来自 CHANGELOG 的「${entry.heading}」`); // i18n-ignore: server log line
   return { state: 'published', id: entry.id, title: entry.title };
 }

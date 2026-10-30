@@ -550,7 +550,6 @@ export const C2S = {
   // Remake-only spectator handover: host opt-in before play, default off (§35.100).
   'room.setAiTakeover': { on: isBool },
   'room.aiRequest': { botId: isId },
-  'room.aiVote': { voteId: (v) => typeof v === 'string' && v.length <= 16, approve: isBool },
   'room.addBot': {},
   'room.removeBot': { seat: (v) => isInt(v, 0, MAX_SEATS - 1), playerId: isId, $optional: ['playerId'] },
   // the host removes another human before the match (server/lobby.js kick; community report #17); playerId = the one the
