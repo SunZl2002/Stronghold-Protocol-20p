@@ -966,14 +966,15 @@ export class Lobby {
     seat.contentGen = (seat.contentGen || 0) + 1;
     // a voter's socket dropped: the version vote is void (header "Official versions")
     if (player && room.versionVote?.voters.includes(session.playerId)) this.voidVersionVote(room, 'members');
-    // a spectator's seat is kept like a player's (nothing to tell the match: it plays no field)
+    // a spectator's seat is kept like a player's (nothing to tell the match: it plays no field) — but only for the grace
+    // window: a watcher who closed the tab must not leave a row behind for the rest of the match
     if (room.match) {
       if (player) {
         // a match in a match host hears it in order with the room's messages (header "Gameplay plugins") — not at
         // all when the player is back by then (the resync after the reconnect tells it onReconnect)
         if (this.queuedRoom(session)) this.queueEvent(room, () => { if (!session.connected) this.callMatch(room, 'onDisconnect', session.playerId); });
         else this.callMatch(room, 'onDisconnect', session.playerId);
-      }
+      } else this.startGrace(room, seat);
     } else this.startGrace(room, seat);
     this.broadcastState(room);
   }
@@ -1113,12 +1114,15 @@ export class Lobby {
     const admission = this.assetCacheAdmission(assetCache);
     if (admission) return admission;
     if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo room');
-    const idx = room.freeSeat();
-    if (idx < 0) return fail(ERR.ROOM_FULL);
     // a human takes a player seat: the version vote is void (header "Official versions") — before the seat is taken, so
     // its toast reaches the members who saw the vote (a spectator sitting down too), never a joiner who did not
     if (room.versionVote) this.voidVersionVote(room, 'members');
     if (cur) this.removeMember(cur, session.playerId);
+    // the same person coming back with a NEW session (a reload that lost the reconnect token, a second tab) while their
+    // old seat is still retained (connected=false) in the grace window: hand that seat back instead of seating them twice
+    if (this.reclaimRetainedSeat(room, session)) { this.discovery.forget(session.playerId); this.broadcastState(room); return OK; }
+    const idx = room.freeSeat();
+    if (idx < 0) return fail(ERR.ROOM_FULL);
     room.seats[idx] = this.humanSeat(idx, session, room);
     session.roomCode = room.code;
     this.discovery.forget(session.playerId);
@@ -1159,6 +1163,8 @@ export class Lobby {
     if (room.mode === 'solo') return fail(ERR.ROOM_FULL, 'solo room');
     if (room.spectators.length >= room.spectatorCapacity) return fail(ERR.ROOM_FULL, 'no free spectator seat');
     if (cur) this.removeMember(cur, session.playerId);
+    // the same person back with a new session while their old spectator row is retained: take that row over
+    if (this.reclaimRetainedSpectator(room, session)) { this.discovery.forget(session.playerId); this.broadcastState(room); return OK; }
     room.spectators.push({ playerId: session.playerId, name: session.name, connected: session.connected });
     session.roomCode = room.code;
     this.discovery.forget(session.playerId);
@@ -2624,6 +2630,83 @@ export class Lobby {
     return true;
   }
 
+  /**
+   * Retire the session that used to own a retained seat/spectator entry: its grace timer, its replay, its chat and its
+   * registry row. Called when the same person comes back with a NEW session and takes that place over.
+   * @param {Room} room @param {string} oldId
+   */
+  retireGhost(room, oldId) {
+    this.clearGrace(oldId);
+    const old = this.registry.byId(oldId);
+    if (old && old.roomCode === room.code) old.roomCode = null;
+    if (old) this.registry.byPlayerId.delete(oldId);
+    this.dropReplay(room, oldId);
+    room.matchCtx?.chat.forgetPlayer(oldId);
+    this.discovery.forget(oldId);
+  }
+
+  /**
+   * The same person, back with a NEW session (a reload that lost the reconnect token, a second tab): their old seat is
+   * still retained with `connected=false` for the grace window, so joining again would seat them twice — the room then
+   * shows "two of me". Hand the retained seat back when the name matches and nobody is attached to it any more.
+   * A running match keeps its seats for the record, so this only runs in a waiting room.
+   * @param {Room} room @param {any} session @returns {boolean} true when the session now holds that seat
+   */
+  reclaimRetainedSeat(room, session) {
+    if (room.match || room.disposed || !session?.playerId) return false;
+    const name = String(session.name || '');
+    if (!name) return false;
+    for (const seat of room.seats) {
+      if (!seat || seat.isBot || seat.left || seat.connected || seat.playerId === session.playerId) continue;
+      if (String(seat.name || '') !== name) continue;
+      const oldId = seat.playerId;
+      const old = this.registry.byId(oldId);
+      if (old && old.connected) continue; // still attached: a live occupant, not a ghost
+      this.retireGhost(room, oldId);
+      Object.assign(seat, { playerId: session.playerId, name: session.name, connected: true, ready: false, left: false, content: null });
+      seat.contentGen = (seat.contentGen || 0) + 1;
+      session.roomCode = room.code;
+      session.notice = null;
+      session.pendingResult = null;
+      if (room.hostId === oldId) room.hostId = session.playerId;
+      this.log.info(`[lobby] ${room.code} seat ${seat.seat} reclaimed by ${session.name}`);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * The spectator twin of {@link reclaimRetainedSeat}: a disconnected spectator entry with the same name is taken over
+   * instead of adding a second row. A running match is fine here — a spectator holds no playing seat; the match only has
+   * to forget the old id and register the new one.
+   * @param {Room} room @param {any} session @returns {boolean}
+   */
+  reclaimRetainedSpectator(room, session) {
+    if (room.disposed || !session?.playerId) return false;
+    const name = String(session.name || '');
+    if (!name) return false;
+    const ghost = room.spectators.find((s) => s.playerId !== session.playerId && !s.connected && String(s.name || '') === name);
+    if (!ghost) return false;
+    const old = this.registry.byId(ghost.playerId);
+    if (old && old.connected) return false;
+    if (room.match) this.callMatch(room, 'removeSpectator', ghost.playerId);
+    this.retireGhost(room, ghost.playerId);
+    ghost.playerId = session.playerId;
+    ghost.name = session.name;
+    ghost.connected = true;
+    ghost.content = null;
+    ghost.contentGen = (ghost.contentGen || 0) + 1;
+    session.roomCode = room.code;
+    session.notice = null;
+    session.pendingResult = null;
+    if (room.match) {
+      this.callMatch(room, 'addSpectator', session.playerId);
+      this.sendChatState(room, session.playerId);
+    }
+    this.log.info(`[lobby] ${room.code} spectator ${session.name} reclaimed`);
+    return true;
+  }
+
   /** Lowest-seat connected human becomes host (else lowest-seat human, else null). */
   migrateHost(room) {
     const humans = room.activeHumans();
@@ -2658,7 +2741,8 @@ export class Lobby {
     this.clearGrace(playerId);
     const t = setTimeout(() => {
       this.graceTimers.delete(playerId);
-      if (room.disposed || room.match) return;
+      // a running match keeps its playing seats for the record; a spectator row is freed like in a waiting room
+      if (room.disposed || (room.match && room.seatOf(playerId))) return;
       const s = room.seatOf(playerId) || room.spectatorOf(playerId);
       if (!s || s.connected) return;
       const session = this.registry.byId(playerId);
