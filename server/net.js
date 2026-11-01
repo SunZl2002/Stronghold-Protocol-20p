@@ -805,7 +805,12 @@ export class Network {
       // back to the lobby — is stale, not a client mistake: never answered (DESIGN §14; a rid-less error frame would
       // surface as an error toast in the browser)
       if (msg.t === 'b.progress' && !validRid(rid)) return;
-      this.reply(conn, errorMsg(isErrCode(res.error) ? res.error : ERR.INTERNAL, rid, res.detail));
+      // a refused membership/room action in play is otherwise invisible in the log ("你不在房间中" never said which
+      // request produced it): one line with the type, the code and what the session held at that moment
+      const code = isErrCode(res.error) ? res.error : ERR.INTERNAL;
+      const s = conn.session;
+      this.log.info(`[net] ${msg.t} → ${code}${res.detail ? ` (${res.detail})` : ''} · ${s?.playerId || '?'} ${s?.name || ''} room=${s?.roomCode || '-'}`);
+      this.reply(conn, errorMsg(code, rid, res.detail));
     } else if (validRid(rid)) this.reply(conn, res?.reply ? { ...res.reply, rid } : { t: 'ok', rid });
   }
 
