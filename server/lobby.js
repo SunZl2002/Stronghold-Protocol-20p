@@ -2572,6 +2572,9 @@ export class Lobby {
     const seat = room.seatOf(session.playerId);
     if (seat && !seat.left && !seat.isBot) return room;
     if (room.spectatorOf(session.playerId)) return room;
+    // a stale roomCode: log what the room actually holds for this id, so a "你不在房间中" in play can be pinned down
+    this.log.info(`[lobby] ${room.code} stale roomCode for ${session.playerId} (${session.name}): seat=${
+      seat ? (seat.left ? 'left' : seat.isBot ? 'bot' : 'live') : 'none'} spectators=${room.spectators.length}`);
     session.roomCode = null;
     return null;
   }
