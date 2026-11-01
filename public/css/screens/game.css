@@ -1196,7 +1196,11 @@
 .bstrip-scroll { display: flex; align-items: center; min-width: 0; gap: .04rem; }
 /* Let the padding protect rings/counts from clipping without lowering the discs and names into the board. */
 .gm__bonds .bstrip-scroll .bstrip { min-width: 0; overflow-x: auto; overflow-y: hidden; padding: .08rem 0; margin: -.08rem 0;
-  pointer-events: auto; touch-action: pan-x; scrollbar-width: thin; }
+  pointer-events: auto; touch-action: pan-x; scrollbar-width: none; -ms-overflow-style: none; }
+/* A strip that outgrows its row scrolls with the ‹ › arrows (and the wheel / a drag): the native bar — a chunky band on
+   Windows, a stray line over the board anywhere else — is not drawn. */
+.bstrip::-webkit-scrollbar, .bstrip-scroll::-webkit-scrollbar { width: 0; height: 0; }
+.bstrip-scroll { scrollbar-width: none; -ms-overflow-style: none; }
 .bstrip-scroll .bslot { flex: none; }
 .gm__bonds .bstrip-scroll__arrow { flex: none; width: 44px; height: 44px; padding: 0;
   background: rgba(8, 11, 10, .7); color: var(--mint); border: 1px solid var(--line-2); cursor: pointer; pointer-events: auto; }
