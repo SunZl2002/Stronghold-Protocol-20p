@@ -27,8 +27,8 @@ export function AiTakeoverPanel() {
   };
   const spectator = room.spectators?.some((s) => s.playerId === myId);
   const bots = (pub?.players || []).filter((p) => p.isBot && p.alive && !p.left);
-  return html`<button type="button" class="btn ai-participation-entry" onClick=${() => setOpen(true)}>${t('AI 接管')}</button>
-    <${Modal} open=${open} onClose=${() => setOpen(false)} title=${t('AI 接管')} width="min(800px,92vw)"
+  return html`<button type="button" class="btn ai-participation-entry" onClick=${() => setOpen(true)}>${t('接管')}</button>
+    <${Modal} open=${open} onClose=${() => setOpen(false)} title=${t('接管')} width="min(800px,92vw)"
       actions=${html`<${Button} onClick=${() => setOpen(false)}>${t('关闭')}<//>`}>
       <p>${t('观战者可直接接管一个 AI 队友：休整期即可加入，不需要其他人投票；房主可在开局前关闭这个选项。')}</p>
       <p>${t('接替后的席位会带走 AI 此前的表现（干员、资金、手牌与战绩），因此不计入你的个人统计或奖励。')}</p>
