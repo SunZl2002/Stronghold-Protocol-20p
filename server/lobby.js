@@ -2920,9 +2920,17 @@ export class Lobby {
   sendToPlayer(room, playerId, msg, encoded = null) {
     if (room.disposed) return false;
     const seat = this.memberEntry(room, playerId);
-    if (!seat || seat.isBot || seat.left) return false;
+    if (!seat || seat.isBot || seat.left) {
+      // a watcher that gets no frames is invisible in play: say why this one was dropped (spectator rows only; player
+      // intents are never sent this way)
+      if (room.spectatorOf(playerId)) this.log.info(`[lobby] ${room.code} drop ${msg?.t} for spectator ${playerId}: entry=${seat ? (seat.left ? 'left' : seat.isBot ? 'bot' : '?') : 'none'}`);
+      return false;
+    }
     const session = this.registry.byId(playerId);
-    if (!session || session.roomCode !== room.code) return false;
+    if (!session || session.roomCode !== room.code) {
+      if (room.spectatorOf(playerId)) this.log.info(`[lobby] ${room.code} drop ${msg?.t} for spectator ${playerId}: session=${session ? `room=${session.roomCode}` : 'gone'}`);
+      return false;
+    }
     return sendSession(session, msg, encoded);
   }
 }
