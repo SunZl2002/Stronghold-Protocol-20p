@@ -161,3 +161,21 @@ test('a spectator who took an AI seat and left can spectate and leave again: one
   }
   assert.equal(room.seatOf(botId)?.left, true, 'the inherited seat stays in the record');
 });
+
+test('退出游戏 (g.leave) then re-entering to watch works: the departed player watches as a spectator', async (t) => {
+  const { srv, room, host, player } = await fixture(t);
+  const m = await startMatch(host, room);
+  const me = await player('www');
+  assert.equal((await me.request({ t: 'room.spectate', code: room.code })).t, 'ok');
+  assert.equal((await me.request({ t: 'room.aiRequest', botId: m.order[1].playerId })).t, 'ok');
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal((await me.request({ t: 'g.leave' })).t, 'ok', 'quit the game');
+  assert.equal(room.spectators.length, 0);
+  // back into the room to watch: the row is new, and the id is still the departed seat's
+  assert.equal((await me.request({ t: 'room.spectate', code: room.code })).t, 'ok');
+  assert.equal(room.spectators.length, 1);
+  const res = await me.request({ t: 'g.watch', fieldId: 'n:' + host.id });
+  assert.equal(res.t, 'ok', JSON.stringify(res));
+  assert.equal((await me.request({ t: 'g.refresh' })).code, 'SPECTATOR', 'a watcher cannot act as a player');
+  assert.equal(srv.registry.byToken(me.token).playerId, room.spectators[0].playerId);
+});

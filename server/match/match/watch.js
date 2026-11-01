@@ -27,9 +27,19 @@ export class MatchWatch {
     if (this.spectators.delete(playerId)) this.watchers.delete(playerId);
   }
 
-  /** The stand-in of a spectator seat, created once (null for a player's id or a bad id). */
+  /**
+   * The stand-in of a spectator seat, created once (null for a player still in the match, or a bad id).
+   *
+   * A player who LEFT the match keeps its seat in `players` for the record (lobby `removeMember` marks it `left`), and the
+   * room hands that same playerId's row to a spectator seat when they come back to watch. Refusing every id in `players`
+   * therefore made 退出游戏 → 进入房间观战 fail: the seat was in `room.spectators`, but `addSpectator` registered no
+   * stand-in and every `g.watch` answered NOT_IN_ROOM (live report from Firefox/接管后). A departed player is no longer a
+   * participant, so their id may watch as a spectator; a player still in the match may not.
+   */
   _spectator(playerId) {
-    if (typeof playerId !== 'string' || !playerId || this.players.has(playerId)) return null;
+    if (typeof playerId !== 'string' || !playerId) return null;
+    const player = this.players.get(playerId);
+    if (player && !player.left) return null;
     let s = this.spectators.get(playerId);
     if (!s) {
       s = Object.freeze({ playerId, isBot: false, left: false, alive: false, connected: true, spectator: true });
