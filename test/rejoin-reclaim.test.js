@@ -174,8 +174,12 @@ test('退出游戏 (g.leave) then re-entering to watch works: the departed playe
   // back into the room to watch: the row is new, and the id is still the departed seat's
   assert.equal((await me.request({ t: 'room.spectate', code: room.code })).t, 'ok');
   assert.equal(room.spectators.length, 1);
+  me.clearInbox();
   const res = await me.request({ t: 'g.watch', fieldId: 'n:' + host.id });
   assert.equal(res.t, 'ok', JSON.stringify(res));
+  const field = await me.waitFor('m.field', () => true, 3000).catch(() => null);
+  assert.ok(field, 'the watcher receives the board it asked for');
+  assert.equal(field.fieldId, 'n:' + host.id);
   assert.equal((await me.request({ t: 'g.refresh' })).code, 'SPECTATOR', 'a watcher cannot act as a player');
   assert.equal(srv.registry.byToken(me.token).playerId, room.spectators[0].playerId);
 });

@@ -810,7 +810,7 @@ export class Lobby {
     session.notice = null;
     session.pendingResult = null;
     // a player seat, or a spectator seat (header): both carry `connected` / `name`
-    const seat = room.seatOf(session.playerId) || room.spectatorOf(session.playerId);
+    const seat = this.memberEntry(room, session.playerId);
     this.clearGrace(session.playerId);
     // Only a visible change (reconnect, rename, new host) is broadcast; a plain resync (repeated hello on a
     // live socket) answers the requester alone, so hello spam cannot amplify into room-wide traffic.
@@ -845,7 +845,7 @@ export class Lobby {
 
   /** A seat (or spectator seat) of `room` and its content generation (header "Gameplay plugins"), or null. */
   seatGen(room, playerId) {
-    const seat = room.seatOf(playerId) || room.spectatorOf(playerId);
+    const seat = this.memberEntry(room, playerId);
     return seat ? { seat, gen: seat.contentGen || 0 } : null;
   }
 
@@ -1494,7 +1494,7 @@ export class Lobby {
     if (!room) return fail(ERR.NOT_IN_ROOM);
     if (!room.needsContent || room.content?.cs !== cs) return OK;
     if (!session.connected) return OK;
-    const seat = room.seatOf(session.playerId) || room.spectatorOf(session.playerId);
+    const seat = this.memberEntry(room, session.playerId);
     if (!seat) return OK;
     if (ctx && ctx.from && (ctx.from.seat !== seat || ctx.from.gen !== (seat.contentGen || 0))) return OK;
     if (ok !== false && room.content?.trusted && room.seatOf(session.playerId) && seat.consentCs !== cs) return fail(ERR.PLUGIN_CONSENT);
@@ -2044,7 +2044,7 @@ export class Lobby {
    */
   settingsCs(room, playerId) {
     if (!room || !room.needsContent) return this.csOf(room);
-    const seat = room.seatOf(playerId) || room.spectatorOf(playerId);
+    const seat = this.memberEntry(room, playerId);
     return seat && /** @type {any} */ (seat).content === 'ready' ? this.csOf(room) : UNVERIFIED_CS;
   }
 
@@ -2493,7 +2493,7 @@ export class Lobby {
       return fail(ERR.WRONG_PHASE, 'no running chat match');
     }
     if (matchId !== ctx.chat.matchId) return fail(ERR.BAD_TARGET, 'stale chat match');
-    const member = room.seatOf(session.playerId) || room.spectatorOf(session.playerId);
+    const member = this.memberEntry(room, session.playerId);
     if (!session.connected || this.registry.byId(session.playerId) !== session || !member || member.isBot || member.left || !member.connected) {
       return fail(ERR.NOT_IN_ROOM);
     }
@@ -2762,7 +2762,7 @@ export class Lobby {
       this.graceTimers.delete(playerId);
       // a running match keeps its playing seats for the record; a spectator row is freed like in a waiting room
       if (room.disposed || (room.match && room.seatOf(playerId))) return;
-      const s = room.seatOf(playerId) || room.spectatorOf(playerId);
+      const s = this.memberEntry(room, playerId);
       if (!s || s.connected) return;
       const session = this.registry.byId(playerId);
       if (session && session.roomCode === room.code) {
@@ -2903,10 +2903,23 @@ export class Lobby {
     return data;
   }
 
+
+  /**
+   * The room entry (player seat or spectator row) a playerId holds. A player who LEFT keeps its seat for the match record
+   * while the same id may hold a spectator row (退出游戏 → 进入房间观战); the departed seat must not shadow that row, or the
+   * lobby drops every frame addressed to the watcher.
+   * @param {Room} room @param {string} playerId @returns {any|null}
+   */
+  memberEntry(room, playerId) {
+    const seat = room.seatOf(playerId);
+    if (seat && !seat.left && !seat.isBot) return seat;
+    return room.spectatorOf(playerId) || seat || null;
+  }
+
   /** Match unicast. @returns {boolean} */
   sendToPlayer(room, playerId, msg, encoded = null) {
     if (room.disposed) return false;
-    const seat = room.seatOf(playerId) || room.spectatorOf(playerId);
+    const seat = this.memberEntry(room, playerId);
     if (!seat || seat.isBot || seat.left) return false;
     const session = this.registry.byId(playerId);
     if (!session || session.roomCode !== room.code) return false;

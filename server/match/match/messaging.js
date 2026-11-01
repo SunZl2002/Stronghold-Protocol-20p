@@ -10,9 +10,22 @@ import { DELAYS } from './common.js';
 import { wireMessage } from '../../../shared/i18n.js';
 
 export class MatchMessaging {
+
+  /**
+   * The seat a playerId acts as right now. A player who LEFT keeps its entry in `players` for the record, while a
+   * spectator seat (or the stand-in the room registers when they come back to watch) carries the same id; the departed
+   * entry must never shadow that stand-in — it made 退出游戏 → 进入房间观战 answer NOT_IN_ROOM and drop every field frame.
+   * @param {string} playerId @returns {any|null}
+   */
+  seatOfId(playerId) {
+    const player = this.players.get(playerId);
+    if (player && !player.isBot && !player.left) return player;
+    return this.spectators.get(playerId) || player || null;
+  }
+
   sendTo(playerId, msg) {
     if (this.disposed) return false;
-    const ps = this.players.get(playerId) || this.spectators.get(playerId);
+    const ps = this.seatOfId(playerId);
     if (!ps || ps.isBot || ps.left) return false;
     try { return !!this.sendFn(playerId, msg); } catch (e) { this.reportError('send', e); return false; }
   }

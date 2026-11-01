@@ -39,9 +39,8 @@ export class MatchPlatform {
   handle(playerId, msg) {
     // a player who LEFT keeps its seat in `players` for the record, and the room gives that same id a spectator seat when
     // they come back to watch (退出游戏 → 进入房间观战): their live stand-in must win over the departed player entry, or
-    // every g.watch answered NOT_IN_ROOM even though the room listed them as a spectator
-    const player = this.players.get(playerId);
-    const ps = (player && !player.isBot && !player.left) ? player : (this.spectators.get(playerId) || player);
+    // every g.watch answered NOT_IN_ROOM even though the room listed them as a spectator (seatOfId, messaging.js)
+    const ps = this.seatOfId(playerId);
     if (!ps || ps.isBot || ps.left) return fail(ERR.NOT_IN_ROOM);
     return this._handleSeatIntent(ps, msg);
   }

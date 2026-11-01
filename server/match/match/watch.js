@@ -223,7 +223,7 @@ export class MatchWatch {
     const out = new Set();
     for (const pid of f.players) out.add(pid);
     for (const [pid, fid] of this.watchers) if (fid === f.fieldId) out.add(pid);
-    return [...out].filter((pid) => { const ps = this.players.get(pid) || this.spectators.get(pid); return ps && !ps.isBot && !ps.left; });
+    return [...out].filter((pid) => { const ps = this.seatOfId(pid); return ps && !ps.isBot && !ps.left; });
   }
 
   watchersOf(fieldId) {
