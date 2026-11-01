@@ -1156,6 +1156,15 @@ export class Lobby {
       this.sendState(room, session);
       return OK;
     }
+    // idempotent even when `roomOf` did not see this room (a departed seat older than the spectator row): one person,
+    // one row — never a second row for the same playerId
+    if (room.spectatorOf(session.playerId)) {
+      session.roomCode = room.code;
+      this.dedupeSpectators(room);
+      this.discovery.forget(session.playerId);
+      this.sendState(room, session);
+      return OK;
+    }
     if (this.emergency.active) return fail(ERR.SERVER_EMERGENCY);
     if (cur && cur.match) return fail(ERR.ROOM_STARTED, 'leave your running match first');
     const admission = this.assetCacheAdmission(assetCache);
@@ -2554,10 +2563,17 @@ export class Lobby {
   roomOf(session) {
     if (!session.roomCode) return null;
     const room = this.rooms.get(session.roomCode);
-    const seat = room ? room.seatOf(session.playerId) : null;
-    if (room && !seat && room.spectatorOf(session.playerId)) return room; // a spectator seat
-    if (!room || !seat || seat.left || seat.isBot) { session.roomCode = null; return null; }
-    return room;
+    if (!room) { session.roomCode = null; return null; }
+    // A 观战者 who took an AI seat and later left keeps that seat as `left` in the match's record (a seat is never freed
+    // mid-match), while a new spectator row carries the same playerId. Checking the departed seat FIRST would clear
+    // `roomCode` and orphan the spectator row: `room.leave` then said NOT_IN_ROOM and every new `room.spectate` pushed
+    // another row — the same person listed several times (the live FZCS room). A live player seat wins, then a spectator
+    // row, and only a seat that is gone / departed / an AI's is stale.
+    const seat = room.seatOf(session.playerId);
+    if (seat && !seat.left && !seat.isBot) return room;
+    if (room.spectatorOf(session.playerId)) return room;
+    session.roomCode = null;
+    return null;
   }
 
   /**
@@ -2828,8 +2844,30 @@ export class Lobby {
     }
   }
 
+  /**
+   * Collapse duplicate spectator rows of one playerId (keep the connected one, else the first). Rows used to pile up when
+   * a 观战者 held a `left` seat from an AI takeover and `roomOf` lost them; the guard in `spectate` stops new ones, this
+   * heals a room that already has them.
+   * @param {Room} room @returns {boolean} true when a row was dropped
+   */
+  dedupeSpectators(room) {
+    const seen = new Map();
+    let dropped = false;
+    room.spectators = room.spectators.filter((s) => {
+      const prev = seen.get(s.playerId);
+      if (!prev) { seen.set(s.playerId, s); return true; }
+      dropped = true;
+      if (!prev.connected && s.connected) { seen.set(s.playerId, s); return true; }
+      return false;
+    });
+    // the kept row is the better of the two: a duplicate that was connected must not leave the survivor marked offline
+    for (const s of seen.values()) if (!s.connected && room.spectators.some((x) => x === s && x.connected)) s.connected = true;
+    return dropped;
+  }
+
   broadcastState(room) {
     if (room.disposed) return;
+    this.dedupeSpectators(room);
     this.discovery.changed();
     reconcileAiTakeover(this, room);
     if (this.trustedRuntime) {

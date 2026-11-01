@@ -141,3 +141,23 @@ test('a live occupant is never reclaimed: a different person with the same name 
   assert.equal(twins.length, 2, 'two live sessions keep their two seats');
   assert.notEqual(twins[0].playerId, twins[1].playerId);
 });
+
+test('a spectator who took an AI seat and left can spectate and leave again: one row, and leave always works', async (t) => {
+  const { srv, room, host, player } = await fixture(t);
+  const m = await startMatch(host, room);
+  const me = await player('www');
+  assert.equal((await me.request({ t: 'room.spectate', code: room.code })).t, 'ok');
+  const botId = m.order[1].playerId;
+  assert.equal((await me.request({ t: 'room.aiRequest', botId })).t, 'ok');
+  // the handover moved the session onto the AI seat's id, which is what the spectator row will carry
+  const id = srv.registry.byToken(me.token).playerId;
+  assert.equal((await me.request({ t: 'room.leave' })).t, 'ok', 'leaving the inherited seat works');
+  // the match keeps that seat as left in its record; the same session now spectates again under its ai_* identity
+  for (let i = 0; i < 3; i++) {
+    assert.equal((await me.request({ t: 'room.spectate', code: room.code })).t, 'ok', `spectate ${i}`);
+    assert.equal(room.spectators.filter((s) => s.playerId === id).length, 1, 'one row for the same playerId');
+    assert.equal((await me.request({ t: 'room.leave' })).t, 'ok', `leave ${i}`);
+    assert.equal(room.spectators.length, 0, 'the row is freed again');
+  }
+  assert.equal(room.seatOf(botId)?.left, true, 'the inherited seat stays in the record');
+});
