@@ -122,8 +122,9 @@ export class MatchSpDraft {
       if (!avail.length) { this.startSpTurn(g); return; }
       // The fallback goes through the SELECTED strategy's pickCard (a custom strategy must see the decision even when
       // it brings no decide hook of its own); the legacy bot is what `legacy` resolves to.
-      const fallback = () => this._applyCard(ps, this.bot.pickCard(this, ps, g.cards, avail));
-      if (this.bot.decide?.(this, ps, { kind: 'card',
+      const bot = this.botFor(ps);
+      const fallback = () => this._applyCard(ps, bot.pickCard(this, ps, g.cards, avail));
+      if (bot.decide?.(this, ps, { kind: 'card',
         valid: () => this.phase === PHASE.SP_DRAFT && this.sp === s && token === g.token,
         complete: () => this.sp?.picks[ps.playerId] != null, fallback })) return;
       fallback();
@@ -220,7 +221,7 @@ export class MatchSpDraft {
     if (!pending) return undefined;
     const indices = pending.cards.map((c, i) => i);
     const idx = mode === 'bot'
-      ? this.bot.pickCard(this, ps, pending.cards.map((c) => bountyCard(this.gd, c)), indices)
+      ? this.botFor(ps).pickCard(this, ps, pending.cards.map((c) => bountyCard(this.gd, c)), indices)
       : this.rngMeta.pick(indices);
     return this.pickPersonalChoice(ps, idx, pending.id);
   }
@@ -305,6 +306,8 @@ export class MatchSpDraft {
     const rng = this.rngMeta;
     const free = (id) => {
       if (typeof id !== 'string' || !this.gd.chess(id)) return false;
+      const rec = typeof chessOf === 'function' ? chessOf(id) : this.gd.chess(id);
+      if (this.chessExcluded(rec)) return false;
       const base = this.gd.baseIdOf(id);
       return !pool.has(base) || pool.left(base) > 0;
     };

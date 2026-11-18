@@ -59,6 +59,8 @@ export function renderInfo(u) {
     // unit (resolveDetail `unitItems` → the read-only 装备 section and the 变形同构体 pairing chips); the owner's own
     // unit takes its items from the piece instead, so only other players' boards ever read this field
     items: Array.isArray(u.items) ? u.items.filter((x) => typeof x === 'string') : undefined,
+    itemProgress: Array.isArray(u.itemProgress) ? u.itemProgress.map(p => ({ ...p })) : undefined,
+    progress: u.progress ? { ...u.progress } : undefined,
     // 0.2.0 补位: the replaced operator's charId of a chess fighting as its stand-in (UnitInfo.standInFor; spine / avatar /
     // name are already the stand-in's) — the detail card and the view's data lookups (attack interval, splash FX) follow it
     standInFor: typeof u.standInFor === 'string' && u.standInFor ? u.standInFor : undefined,
@@ -67,5 +69,11 @@ export function renderInfo(u) {
     diy: u.diy && typeof u.diy === 'object' && typeof u.diy.charId === 'string'
       ? { charId: u.diy.charId, skillIndex: Number.isInteger(u.diy.skillIndex) ? u.diy.skillIndex : null, uniEquipId: typeof u.diy.uniEquipId === 'string' ? u.diy.uniEquipId : null }
       : undefined,
+    // 干员皮肤 (docs/SKINS.md): the owning player's chosen skinId, sent with the snapshot (UnitInfo.skin) — the view asks
+    // assets.js for that appearance's Spine / avatar and falls back to the operator's own model when the manifest has no
+    // such skin. 设置「显示皮肤」(this fork's global switch) hides every skin, the viewer's own included.
+    skin: (u.skin && skinsVisible()) ? u.skin : null,
+    // 召唤物皮肤 (docs/SKINS.md): the owner operator's charId; display only.
+    ownerCharId: typeof u.ownerCharId === 'string' && u.ownerCharId ? u.ownerCharId : undefined,
   };
 }

@@ -71,16 +71,18 @@ export const NET_DEFAULTS = Object.freeze({
  * Intents that also draw from the per-connection heavy bucket: g.watch (its reply is a large state resend, m.field),
  * room.loadout (a ≤ 160-entry map and ≤ 256 operator settings validated against the game data; the client debounces its
  * edits), room.ownership
- * (a ≤ 160-id list, the same way), room.diy (≤ 8 自选 picks checked against the data, the same way), room.spectate /
- * lobby.spectate (taking a spectator seat in a running match resends its state like a watcher's g.watch — server/lobby.js
- * spectate), room.setPlugins (a new visual set: every member downloads its art manifest — server/plugins/visualSet.js),
- * room.skins (docs/SKINS.md) is a small skinId map sent on every appearance edit: a changed map re-broadcasts
- * room.state to a waiting room (its seat cards wear it: room.state seats[].skins), room.card (名片干员, PR #643 split 6)
- * re-broadcasts room.state on every accepted change, room.rerollSetup (重刷本局) rebuilds the opening and resends
- * m.public (server/match/match/setupVote.js, DESIGN §35.47), room.proposeVersion (DESIGN §35.23) makes every page
- * download that version's data, state.resync forces a full state resend,
- * and lobby.watch with on:true/list:true (a paginated room directory, at most 50 rows per reply) and lobby.online
- * (this fork's D039 roster, at most 200 rows per reply).
+ * (a ≤ 160-id list, the same way), room.diy (≤ 12 自选 picks checked against the data, the same way), room.spectate
+ * (taking a spectator seat in a running match resends its state like a watcher's g.watch — server/lobby.js spectate) and
+ * room.setPlugins (a new visual set: every member downloads its art manifest — server/plugins/visualSet.js).
+ * room.skins (docs/SKINS.md) is a small `{ [charId]: skinId }` map, sent on every edit of the appearance; a changed map
+ * re-broadcasts room.state to a waiting room (its seat cards wear it: room.state seats[].skins). room.card (名片干员, PR
+ * #643 split 6): every accepted change re-broadcasts room.state to the room. room.rerollSetup (重刷本局): with one human a
+ * start completes at once and clears that seat's 30 s cooldown, and each reroll rebuilds the opening and resends m.public
+ * to every connection (server/match/match/setupVote.js, DESIGN §35.47). Any seated player may start it (#860).
+ * room.proposeVersion (DESIGN §35.23) stays host-proposed: an accepted proposal by a lone human switches the room's
+ * version — every page then downloads that version's data.
+   * and lobby.watch with on:true/list:true (a paginated room directory, at most 50 rows per reply) and lobby.online
+   * (this fork's D039 roster, at most 200 rows per reply); state.resync forces a full state resend.
  */
 export const HEAVY_TYPES = new Set(['g.watch', 'room.loadout', 'room.skins', 'room.ownership', 'room.diy', 'room.spectate', 'lobby.spectate', 'room.setPlugins', 'lobby.watch', 'lobby.online', 'room.card', 'room.rerollSetup', 'room.proposeVersion', 'state.resync']);
 

@@ -111,7 +111,7 @@ export class MatchOffers {
 
   _offerAvailable(ps, card) {
     const effect = card.effect;
-    if (effect.item) return !!ps.gd.item(effect.item) && this.itemPool.canGain(effect.item);
+    if (effect.item) return !!ps.gd.item(effect.item) && this.itemPoolFor(ps).canGain(effect.item);
     if (effect.chess) {
       const rec = ps.gd.chess(effect.chess);
       return !!rec && (!rec.isDiy || !!rec.diyFor);
@@ -150,7 +150,7 @@ export class MatchOffers {
       this._offerSettleIfDone(w);
       this._offerProgress();
     };
-    if (this.bot.decide?.(this, ps, { kind: 'offer', key: `offer:${w.seq}`, deadline: w.deadline,
+    if (this.botFor(ps).decide?.(this, ps, { kind: 'offer', key: `offer:${w.seq}`, deadline: w.deadline,
       valid: () => !w.closed && !w.picks.has(ps.playerId), complete: () => w.picks.has(ps.playerId), fallback })) return;
     this._offerDefault(ps, w);
   }

@@ -497,7 +497,7 @@ test('user playtest #6 (DESIGN §20): summons, skill triggers, blocking, push fo
   assert.match(sec(17), /\*\*revised by §20\.6\*\*/);
   assert.ok(!/the own battle's count stays on show as an upper bound tagged 联防中/.test(DESIGN), '§17.5: the frozen 联防 count is gone');
   assert.match(sec(8), /uniteLeft\? \/\* 联防: the leaker's enemies still standing/);
-  assert.match(sec(14), /`b\.progress \{ battleId, gt, killed, total, resolved\?, leaks\?, left\?, bossDmg\?, by\?, leaksBy\?, done\? \}`/);
+  assert.match(sec(14), /`b\.progress \{ battleId, gt, killed, total, resolved\?, leaks\?, left\?, bossDmg\?, by\?, leaksBy\?, ops\?, done\? \}`/);
   assert.match(doc('shared/protocol.js'), /leaksBy: \(v\) => isMap\(v, RESULT_LIMITS\.players, isId, \(x\) => isNum\(x, 0, 1e6\)\)/);
   assert.match(sec(6), /3 \*\*different\*\* free chess of tier `min\(level\+1, 6\)`/);
   assert.match(S20, /105 cards: 56 next-battle incl\. 源石虫·特训, 42 two-battle, 7 multi-round/);
@@ -898,6 +898,8 @@ test('干员战斗语音 (DESIGN §21.30): the manifest data, the official prior
   };
   // skill4 is the fourth skill's line: an operator with three skills has none, and the 0.3.3 manifest now carries the
   // historical (第一期) operators too, so it is required only where it exists. Every other battle slot is universal.
+  // (v0.4.0 lists the two known source gaps by operator; this fork's manifest has the same hole for more operators, so
+  // the slot stays optional here and the per-slot presence is asserted for every other line below.)
   const required = slots.filter((s) => s !== 'skill4');
   for (const id of charIds) {
     for (const s of required) assert.ok(voice[id][s], `${id}.${s}`);
