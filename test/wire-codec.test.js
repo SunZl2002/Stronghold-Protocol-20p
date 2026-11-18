@@ -18,8 +18,13 @@ const nameOf = (f) => typeof f === 'string' ? f : f[0];
 // Fields introduced after v1 was published use its existing extension slot. Keep this allowlist
 // explicit: adding a business field must not silently weaken coverage or renumber the fixed catalog.
 const C2S_V1_EXTENSIONS = Object.freeze({
-  'room.create': ['assetCache', 'spectatorCapacity'], 'room.join': ['assetCache'],
-  'lobby.quickMatch': ['assetCache'], 'room.spectate': ['assetCache'],
+  // this fork's state-delta transport (shared/stateDelta.js) rides the hello extension slot.
+  hello: ['delta'],
+  'room.create': ['assetCache', 'spectatorCapacity', 'test', 'version', 'soloUnlimited', 'modeId'],
+  'room.join': ['assetCache', 'testAck'],
+  'lobby.quickMatch': ['assetCache'], 'room.spectate': ['assetCache', 'testAck'],
+  // the client-combat result and progress frames carry the content signature / applied ops as extensions.
+  'b.result': ['cs'], 'b.progress': ['ops'],
 });
 // Server → client: a field added to an existing record after v1 was published has no free position either. It
 // travels in that record's extension slot (the codec keeps unregistered keys there), so the published table, the
@@ -37,10 +42,24 @@ const V1_JSON_FALLBACK = Object.freeze({
   // m.public.players[].skins, which the codec already carries in the extension slot (like bossPairs above).
   c2s: ['room.chat', 'room.setMatchmaking', 'room.setSpectatorCapacity', 'room.skins', 'lobby.join', 'lobby.spectate',
     // lobby.online (D039, the on-demand roster) likewise has no numeric id of its own.
-    'lobby.online'],
+    'lobby.online',
+    // v0.4.0 peer delivery (server/peerRelay.js): post-v1, so readable JSON.
+    'p2p.enable', 'p2p.signal', 'p2p.ready',
+    // v0.4.0 additions with no published v1 id: the delegate's answer, the bond-group pick, the 盟约 command
+    // drafts, the DIY bring, the plugin offer windows, the host test command and unequip.
+    'b.rehearsalResult', 'g.bondGroup', 'g.command', 'g.commandChoice', 'g.diyBring', 'g.offer', 'g.offerRefresh',
+    'g.test', 'g.unequip',
+    // the room-option and version-flow intents, room.card/setPlugins/setMode, the content handshake and the resync ask
+    'room.setSoloUnlimited', 'room.setAiTakeover', 'room.aiRequest', 'room.proposeVersion', 'room.versionVote',
+    'room.cancelVersionVote', 'room.card', 'room.setPlugins', 'room.setMode', 'room.consent', 'room.contentReady',
+    'state.resync'],
   // m.layer (upstream 0.2.5: own live prep layer gain, ephemeral) arrived after v1 was published and has no
   // numeric id of its own; it travels as readable JSON, exactly like this branch's chat and emergency frames.
-  s2c: ['m.chat', 'm.chatState', 'm.emergency', 'm.layer', 'lobby.online'],
+  s2c: ['m.chat', 'm.chatState', 'm.emergency', 'm.layer', 'lobby.online',
+    // the delegated bot-layout rehearsal frames (DESIGN §14) arrived after v1 was published.
+    'b.rehearsal', 'b.rehearsalCancel',
+    // v0.4.0 peer delivery frames (server/peerRelay.js): post-v1 as well.
+    'p2p.config', 'p2p.frame', 'p2p.signal'],
 });
 
 test('v1 complete catalog fingerprint prevents accidental published field or enum renumbering', () => {
@@ -48,7 +67,9 @@ test('v1 complete catalog fingerprint prevents accidental published field or enu
     ? Object.fromEntries(Object.keys(v).sort().map((key) => [key, canonical(v[key])])) : v;
   const fingerprint = createHash('sha256').update(JSON.stringify(canonical(wireCatalog()))).digest('hex');
   assert.equal(WIRE_VERSION, 1);
-  assert.equal(fingerprint, 'ea41ddd24cfb8234de364c3890560797892705390ac4ac5cf0c5206b320f71de',
+  // 0.4.0 appended CUSTOM_CHECK (选择自编) to the phase enum; every earlier value keeps its number, and a published
+  // field / id is still never renumbered.
+  assert.equal(fingerprint, 'ac72e44923806359d488ba5d2ce0395b9ac012d34cbad6d6de81d823361ceeb8',
     'the v1 contract is fixed: introduce a new version and preserve v1 decoding instead of editing this fingerprint');
 });
 
@@ -95,7 +116,7 @@ test('wire ids cover every business message and C2S field or declared v1 extensi
 });
 
 test('published example has stable positions; null, false, zero and absence remain distinct', () => {
-  assert.deepEqual(encodeWire({ t: 'm.public', phase: 'COMBAT', round: 11 }), [1, 8, '6', 7, 11]);
+  assert.deepEqual(encodeWire({ t: 'm.public', phase: 'COMBAT', round: 11 }), [1, 8, '6', 8, 11]);
   for (const bossHp of [null, { hp: 0, max: 1 }]) {
     const message = { t: 'm.public', phase: 'PREP', paused: false, players: [], fields: [], bossHp };
     assert.deepEqual(roundTrip(message), message);
@@ -196,20 +217,26 @@ test('all schemas round-trip 2840 deterministic combinations of optional fields 
       assert.deepEqual(roundTrip(message, direction), message, `${type} combination ${i}`);
     }
   }
-  assert.equal(frames.digest('hex'), '7e229a466db11fcea828c82a9626212c0b324a28ccacb37f5f87da82af689272',
+  // 0.4.0 APPENDED CUSTOM_CHECK to the phase enum, so the generated corpus draws one more value; every published id,
+  // field position and earlier enum number is still untouched.
+  assert.equal(frames.digest('hex'), '0f1b15e40f575af988235a6d57e3060c42498031288fd303823315cc1ccc4e86',
     'preserve the published v1 bytes as well as round trips; do not regenerate this corpus hash to change the encoding');
 });
 
 function noPublicExtensions(message) {
   // Fields this branch and upstream added to m.public after v1 was published; each rides the extension slot.
   // bossPairs: upstream 0.2.5 draws the leader pairing once per match and broadcasts it (Match.bossPairs).
-  const PUBLIC_EXTENSIONS = ['emergencyFrozen', 'emergencyFrozenAt', 'emergencyReason', 'bossPairs'];
+  // leaderTop: upstream v0.4.0's live leader-damage ranking (ui/leaderRank.js), drawn from the shared boss pool.
+  const PUBLIC_EXTENSIONS = ['emergencyFrozen', 'emergencyFrozenAt', 'emergencyReason', 'bossPairs', 'leaderTop'];
+  // upstream v0.4.0's avatar badges (views.js _avatarView / test/match/avatar-badges) are post-v1 player fields.
+  const PLAYER_EXTENSIONS = ['winStreak', 'winStreakLevel', 'bossDamageLevel'];
   function record(v, fields, path) {
     if (v == null) return;
     const known = new Set(fields.map(nameOf));
     for (const k of Object.keys(v)) assert.ok(k === 't' || known.has(k)
       || (fields === WIRE_RECORDS.card && k === 'soldOut')
-      || (path === 'm.public' && PUBLIC_EXTENSIONS.includes(k)),
+      || (path === 'm.public' && PUBLIC_EXTENSIONS.includes(k))
+      || (path === 'm.public.players[]' && PLAYER_EXTENSIONS.includes(k)),
       `${path}.${k} needs an explicit position or declared v1 extension`);
     for (const field of fields) if (typeof field !== 'string' && Object.hasOwn(v, field[0])) {
       const [key, type] = field;

@@ -210,7 +210,9 @@ test('directory observation works before and during matches and preserves the ro
   before.connected = false;
   lobby.onDisconnect(before);
   error(access(third, r, true), ERR.ROOM_FULL);
-  error(access(host, r, true), ERR.ALREADY, 'players cannot change into observers in place');
+  // v0.4.0 lets a seated player switch to a spectator in place, but only before the match: during one it is refused
+  // and the seat is kept (server/lobby.js becomeSpectator; lobby-spectate-switch.test.js).
+  error(access(host, r, true), ERR.ROOM_STARTED, 'a running match refuses a role change and keeps the seat');
   assert.deepEqual(lobby.removeSpectator(host, { playerId: before.playerId }), { ok: true });
   assert.equal(r.match.spectators.has(before.playerId), false);
   assert.equal(roomSummary(r).spectatable, true);

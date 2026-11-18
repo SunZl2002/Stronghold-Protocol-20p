@@ -8,11 +8,20 @@
 // gold and results, the applicant's identity (reconnect token) moves onto that seat, the inherited seat is flagged with
 // `aiTakeoverRound` so its records never count as the newcomer's personal statistics, and the connection's state-delta
 // negotiation restarts against the new seat.
+//
+// A 第二期下半 official non-default version's match runs in its version host: the lobby asks aiHandoverView /
+// acceptAiHandover and keeps sessions, seats and tokens in this process. The handover there stays direct too — the
+// host's acceptAiHandover is the whole gate, no vote is kept here. Gameplay-plugin rooms stay refused.
 import { ERR, PROTOCOL_VERSION } from '../shared/constants.js';
 import { DEFAULT_VERSION } from '../shared/versions.js';
 import { resetStateDelta, stateDeltaVersion } from './stateTransport.js';
 
 const fail = (detail) => ({ error: ERR.BAD_TARGET, detail });
+
+/** A real official-version match host. A forged `hosted` flag on an in-process match is not this. */
+function hostView(room) {
+  return !!room && room.match?.hosted === true && room.version !== DEFAULT_VERSION && !room.modded;
+}
 
 /** No request is ever pending now; kept so the room lifecycle (dispose, AI changes) needs no special case. */
 export function resetAiTakeover(room) {
@@ -29,6 +38,7 @@ export function reconcileAiTakeover() {
  * @param {any} lobby @param {any} room @param {string} applicantId @param {string} botId
  */
 export function transferAiSeat(lobby, room, applicantId, botId) {
+  if (hostView(room)) return transferOnHost(lobby, room, applicantId, botId);
   const m = room.match, session = lobby.registry.byId(applicantId), spectator = room.spectatorOf(applicantId);
   const ps = m?.players?.get(botId), seat = room.seatOf(botId);
   if (room.aiTakeoverEnabled !== true || room.mode !== 'coop' || room.version !== DEFAULT_VERSION) return fail('AI handover is disabled');
@@ -37,19 +47,10 @@ export function transferAiSeat(lobby, room, applicantId, botId) {
   if (lobby.registry.byId(botId)) return fail('AI seat already has a session');
   const conn = lobby.network?.conns.get(session.ws);
   if (!conn || conn.closing) return fail('connection unavailable');
-  lobby.removeMember(room, applicantId); lobby.clearResync(applicantId);
-  lobby.registry.byPlayerId.delete(applicantId); session.playerId = botId; lobby.registry.byPlayerId.set(botId, session);
-  session.roomCode = room.code; session.notice = null; session.pendingResult = null; session.resyncAt = -Infinity;
-  ps._botPrepToken = (ps._botPrepToken || 0) + 1;
-  m.cancelSeatRehearsal(botId);
-  Object.assign(ps, { isBot: false, autoplay: false, connected: true, ready: false, name: session.name });
-  Object.assign(seat, { isBot: false, connected: true, left: false, ready: false, name: session.name });
-  m.loneHuman = m.order.filter(p => !p.isBot && !p.left).length === 1;
-  ps.aiTakeoverRound = m.round;
-  session.aiTakeoverFrom = applicantId; m.markPublic(); ps.dirty();
-  resetStateDelta(conn.ws);
-  lobby.network.onHelloMsg(conn, { t: 'hello', version: PROTOCOL_VERSION, delta: stateDeltaVersion(conn.ws), name: session.name, token: session.token }, lobby.now());
-  lobby.broadcastState(room);
+  // The match method repeats the seat checks above and then does what this function used to write on the player.
+  const accepted = m.acceptAiHandover(botId, session.name);
+  if (!accepted || accepted.ok !== true) return accepted && accepted.error ? accepted : fail('AI handover unavailable');
+  bindInheritedSeat(lobby, room, session, conn, applicantId, botId);
   return { ok: true };
 }
 
@@ -63,3 +64,62 @@ export function aiTakeover(lobby, session, msg) {
   if (msg.t !== 'room.aiRequest') return fail('unknown AI handover message');
   return transferAiSeat(lobby, room, session.playerId, msg.botId);
 }
+
+function bindInheritedSeat(lobby, room, session, conn, applicantId, botId) {
+  lobby.removeMember(room, applicantId); lobby.clearResync(applicantId);
+  lobby.registry.byPlayerId.delete(applicantId); session.playerId = botId; lobby.registry.byPlayerId.set(botId, session);
+  session.roomCode = room.code; session.notice = null; session.pendingResult = null; session.resyncAt = -Infinity;
+  const seat = room.seatOf(botId);
+  if (seat) Object.assign(seat, { isBot: false, connected: true, left: false, ready: false, name: session.name });
+  session.aiTakeoverFrom = applicantId;
+  resetStateDelta(conn.ws);
+  lobby.network.onHelloMsg(conn, { t: 'hello', version: PROTOCOL_VERSION, delta: stateDeltaVersion(conn.ws), name: session.name, token: session.token }, lobby.now());
+  lobby.broadcastState(room);
+}
+
+function transferOnHost(lobby, room, applicantId, botId) {
+  const m = room.match, session = lobby.registry.byId(applicantId), spectator = room.spectatorOf(applicantId);
+  const seat = room.seatOf(botId);
+  if (room.aiTakeoverEnabled !== true || room.mode !== 'coop' || !hostView(room)) return fail('AI handover is disabled');
+  if (!session?.connected || !session.ws || !spectator || !seat) return fail('AI handover unavailable');
+  if (lobby.registry.byId(botId)) return fail('AI seat already has a session');
+  const conn = lobby.network?.conns.get(session.ws);
+  if (!conn || conn.closing) return fail('connection unavailable');
+  // The child re-checks the bot and the phase, then mutates. Rebind only after it accepts.
+  return m.acceptAiHandover(botId, session.name).then((accepted) => {
+    if (!accepted || accepted.ok !== true) return accepted && accepted.error ? accepted : fail('AI handover unavailable');
+    if (lobby.registry.byId(applicantId) !== session || !session.connected || !session.ws || conn.closing || !room.spectatorOf(applicantId)) {
+      // The host already made the seat human (the socket dropped during the round trip). [ASSUMED] It stays the
+      // applicant's as a disconnected seat — their token resumes it, the match's disconnect rules apply meanwhile — and
+      // an applicant whose session is gone has left it: never a human seat the lobby does not know.
+      const seat = room.seatOf(botId);
+      if (lobby.registry.byId(applicantId) === session && room.spectatorOf(applicantId)) {
+        lobby.removeMember(room, applicantId); lobby.clearResync(applicantId);
+        lobby.registry.byPlayerId.delete(applicantId); session.playerId = botId; lobby.registry.byPlayerId.set(botId, session);
+        session.roomCode = room.code; session.aiTakeoverFrom = applicantId;
+        if (seat) Object.assign(seat, { isBot: false, connected: false, left: false, ready: false, name: session.name });
+        lobby.callMatch(room, 'onDisconnect', botId);
+      } else {
+        if (seat) Object.assign(seat, { isBot: false, connected: false, left: true, ready: false });
+        lobby.callMatch(room, 'onLeave', botId);
+      }
+      lobby.broadcastState(room);
+      return fail('connection unavailable');
+    }
+    bindInheritedSeat(lobby, room, session, conn, applicantId, botId);
+    return { ok: true };
+  });
+}
+
+/** Kept for the lobby's broadcast paths: a version-host reconcile read may settle late, an in-process one is a boolean. */
+function afterReconcile(lobby, room, rec) {
+  if (rec && typeof rec.then === 'function') {
+    rec.then((changed) => { if (changed && room && !room.disposed) lobby.broadcastState(room); }, (e) => {
+      lobby.log?.error?.(`[lobby] ${room?.code} AI handover reconcile failed`, e);
+    });
+    return;
+  }
+  if (rec && room) lobby.broadcastState(room);
+}
+
+export { afterReconcile };

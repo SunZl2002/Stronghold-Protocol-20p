@@ -5,7 +5,8 @@
 export const WIRE_VERSION = 1;
 
 export const WIRE_ENUMS = Object.freeze({
-  phase: Object.freeze(['LOBBY', 'INFO_CHECK', 'BAND_DRAFT', 'BATTLE_CHECK', 'ROUND_START', 'SP_DRAFT', 'PREP',
+  // v0.4.0's 选择自编 phase sits where PHASE (shared/constants.js) puts it; the enum mirrors that order (test/wire-codec).
+  phase: Object.freeze(['LOBBY', 'INFO_CHECK', 'BAND_DRAFT', 'CUSTOM_CHECK', 'BATTLE_CHECK', 'ROUND_START', 'SP_DRAFT', 'PREP',
     'COMBAT', 'UNITE', 'SETTLE', 'FINAL_ASSAULT', 'HIDDEN_CORE', 'RESULT']),
   difficulty: Object.freeze(['FUNNY', 'NORMAL', 'HARD', 'ABYSS']),
   mode: Object.freeze(['solo', 'coop']),

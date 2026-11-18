@@ -418,6 +418,10 @@ describe('net.js', () => {
     assert.equal(e.code, 'NO_FUNDS');
     assert.equal(e.message, '资金不足');
     assert.match(new NetError('BAD_MSG', 'x', 'version mismatch: server 2').message, /版本/);
+    // a refusal that only names an official version is not the protocol check: its own text, no 刷新页面
+    assert.equal(new NetError('VERSION_UNSUPPORTED', 'x', 'act3autochess@V3_1 has no coop rooms').message, '该版本不能用于当前房间，请检查模拟方式与插件支持的版本');
+    assert.equal(new NetError('BAD_TARGET', 'x', 'not a mode of this version').message, errorText('BAD_TARGET'));
+    assert.notEqual(new NetError('PLUGIN_BLOCKED', 'x', 'training does not support version act3autochess@V3_1').message, '客户端版本与服务器不一致，请刷新页面');
   });
 
   test('defaultWsUrl', async () => {
@@ -1249,6 +1253,8 @@ function cssRules(src) {
 
 /** Stylesheets this branch appends after devices.css (announcements, pre-cache, in-match chat). */
 const BRANCH_SHEETS = ['/css/announcements.css', '/css/asset-cache.css', '/css/match-chat.css'];
+/** upstream v0.4.0's interface theme sheet, linked after devices.css as well. */
+const THEME_SHEET = '/css/ui-theme.css';
 
 describe('multi-device & browser compatibility (static)', () => {
   const index = readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
@@ -1261,14 +1267,15 @@ describe('multi-device & browser compatibility (static)', () => {
     const sheets = [...index.matchAll(/^\s*<link rel="stylesheet"[^>]*href="(\/css\/[^"]+)"/gm)].map((x) => x[1]);
     // devices.css carries the media-query overrides and sits after every screen sheet. 0.3.0 asserts it is the LAST
     // stylesheet, which this fork cannot: its own feature sheets (announcements / asset-cache / match-chat) are linked
-    // around it, and match-chat.css legitimately comes after. What must hold either way is that nothing OTHER than a
-    // branch feature sheet follows it.
+    // around it, match-chat.css legitimately comes after, and v0.4.0 links its interface theme sheet after them. What
+    // must hold either way is that nothing OTHER than a branch feature sheet or that theme sheet follows it.
     const devicesAt = sheets.indexOf('/css/devices.css');
     assert.ok(devicesAt >= 0, 'devices.css is linked');
     assert.ok(sheets.length >= 15, `only ${sheets.length} local stylesheets found`);
     for (const s of BRANCH_SHEETS) assert.ok(sheets.includes(s), `${s} is linked`);
-    for (const s of sheets.slice(devicesAt + 1)) assert.ok(BRANCH_SHEETS.includes(s), `${s} follows devices.css and is not a branch feature sheet`);
-    // 0.3.0 moved the boot fallback out of index.html: an external script under its CSP, and no inline handler
+    assert.ok(sheets.includes(THEME_SHEET), 'ui-theme.css is linked');
+    const trailing = new Set([...BRANCH_SHEETS, THEME_SHEET]);
+    for (const s of sheets.slice(devicesAt + 1)) assert.ok(trailing.has(s), `${s} follows devices.css and is not a branch feature sheet`);
     assert.match(index, /<script nomodule src="\/js\/bootLegacy\.js">/, 'a browser without ES modules gets the external fallback');
     const boot = readFileSync(path.join(PUBLIC, 'js/boot.js'), 'utf8');
     const legacy = readFileSync(path.join(PUBLIC, 'js/bootLegacy.js'), 'utf8');
