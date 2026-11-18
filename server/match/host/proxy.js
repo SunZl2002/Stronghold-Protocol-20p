@@ -5,7 +5,7 @@
 //
 //   start()                                  the worker creates the match and starts it (the worker may still be booting:
 //                                            the host queues the messages; the match exists for the lobby at once)
-//   handle / setLoadout / requestSetupReroll / cancelSetupReroll / aiHandoverView / acceptAiHandover
+//   handle / setLoadout / setSkins / requestSetupReroll / cancelSetupReroll / aiHandoverView / acceptAiHandover
 //                                            → Promise of the match's answer ({ ok } | { error, detail })
 //                                            — the lobby answers the request when it settles (server/net.js).
 //                                            aiHandoverView's ok result also carries the eligibility snapshot.
@@ -134,6 +134,8 @@ export class MatchProxy {
    */
   acceptAiHandover(botId, name) { return this._request('acceptAiHandover', [botId, name]); }
   setLoadout(playerId, loadout, ops) { return this._request('setLoadout', [playerId, loadout, ops]); }
+  /** 干员皮肤 (this fork, docs/SKINS.md): cosmetic and public, so a running version-host match takes it at once. */
+  setSkins(playerId, skins) { return this._request('setSkins', [playerId, skins]); }
   requestSetupReroll(playerId, revision) { return this._request('requestSetupReroll', [playerId, revision]); }
   cancelSetupReroll(playerId, voteId) { return this._request('cancelSetupReroll', [playerId, voteId]); }
   onDisconnect(playerId) { this._notify('onDisconnect', [playerId]); }

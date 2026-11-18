@@ -190,6 +190,7 @@ async function boot() {
 function fallback(match, method, args) {
   if (method === 'onLeave' && typeof match.onDisconnect === 'function') return match.onDisconnect(...args);
   if (method === 'setLoadout') return { error: 'ROOM_STARTED', detail: 'stored for the next match' };
+  if (method === 'setSkins') return { error: 'ROOM_STARTED', detail: 'stored for the next match' };
   if (method === 'requestSetupReroll' || method === 'cancelSetupReroll') return { error: 'WRONG_PHASE' };
   return undefined;
 }
